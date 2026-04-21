@@ -29,6 +29,7 @@ EXPS = [
     ("gat_old", "configs/vg_scene_graph_gat.yaml", "OUTPUT_LONG_FIXED/vg_scene_graph_gat_5k/tag00/checkpoint_00005000.pth"),
     ("gat_residual", "configs/vg_scene_graph_gat_residual.yaml", "OUTPUT_RESIDUAL/vg_scene_graph_gat_residual_mlpinit_2k/tag00/checkpoint_00002000.pth"),
     ("gat_residual_align", "configs/vg_scene_graph_gat_residual_align.yaml", "OUTPUT_ALIGN/vg_scene_graph_gat_residual_align_mlpinit_2k/tag00/checkpoint_00002000.pth"),
+    ("gat_adapter", "configs/vg_scene_graph_gat_adapter.yaml", "OUTPUT_ADAPTER/vg_scene_graph_gat_adapter_mlpinit_2k/tag00/checkpoint_00002000.pth"),
 ]
 
 BASE_CKPT = "gligen_checkpoints/diffusion_pytorch_model.bin"
