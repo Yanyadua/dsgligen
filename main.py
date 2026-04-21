@@ -47,6 +47,8 @@ if __name__ == "__main__":
     parser.add_argument('--enable_ema', default=False, type=lambda x:x.lower() == "true")
     parser.add_argument('--freeze_fuser', default=False, type=lambda x:x.lower() == "true",
         help="If true, freeze GLIGEN gated fuser layers and train only grounding-related modules such as position_net.")
+    parser.add_argument('--freeze_position_base', default=False, type=lambda x:x.lower() == "true",
+        help="If true, freeze position_net node_in/out MLP path and train only the scene-graph adapter branch.")
     parser.add_argument("--ema_rate", type=float,  default=0.9999, help="")
     parser.add_argument("--total_iters", type=int,  default=500000, help="")
     parser.add_argument("--save_every_iters", type=int,  default=5000, help="")
@@ -84,7 +86,6 @@ if __name__ == "__main__":
     trainer.start_training()
 
     # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -m torch.distributed.launch --nproc_per_node=8 main.py  --yaml_file=configs/ade_sem.yaml  --DATA_ROOT=../../DATA   --batch_size=4
-
 
 
 

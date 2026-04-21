@@ -82,12 +82,26 @@ class PositionNet(nn.Module):
     otherwise it falls back to a fully connected object graph for quick ablations.
     """
 
-    def __init__(self, in_dim, out_dim, hidden_dim=768, fourier_freqs=8, gat_layers=2, gat_heads=4, relation_dim=None, dropout=0.0, graph_gate_init=-4.0):
+    def __init__(
+        self,
+        in_dim,
+        out_dim,
+        hidden_dim=768,
+        fourier_freqs=8,
+        gat_layers=2,
+        gat_heads=4,
+        relation_dim=None,
+        dropout=0.0,
+        graph_gate_init=-4.0,
+        use_graph_adapter=False,
+        graph_adapter_ratio=0.25,
+    ):
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.hidden_dim = hidden_dim
         self.relation_dim = relation_dim
+        self.use_graph_adapter = use_graph_adapter
 
         self.fourier_embedder = FourierEmbedder(num_freqs=fourier_freqs)
         self.position_dim = fourier_freqs * 2 * 4
@@ -103,6 +117,13 @@ class PositionNet(nn.Module):
         # Start graph propagation as a small residual update. This keeps the
         # original object semantics alive while GAT learns useful context.
         self.graph_gate = nn.Parameter(torch.tensor(float(graph_gate_init))) if gat_layers > 0 else None
+        adapter_hidden_dim = max(1, int(hidden_dim * graph_adapter_ratio))
+        self.graph_adapter = nn.Sequential(
+            nn.LayerNorm(hidden_dim),
+            nn.Linear(hidden_dim, adapter_hidden_dim),
+            nn.SiLU(),
+            nn.Linear(adapter_hidden_dim, hidden_dim),
+        ) if use_graph_adapter and gat_layers > 0 else None
         self.out = nn.Sequential(nn.LayerNorm(hidden_dim), nn.Linear(hidden_dim, out_dim))
 
         self.null_positive_feature = nn.Parameter(torch.zeros([in_dim]))
@@ -124,7 +145,10 @@ class PositionNet(nn.Module):
 
         if self.graph_gate is not None:
             gate = torch.sigmoid(self.graph_gate).to(dtype=x.dtype)
-            x = x_base + gate * (x - x_base)
+            graph_delta = x - x_base
+            if self.graph_adapter is not None:
+                graph_delta = self.graph_adapter(graph_delta)
+            x = x_base + gate * graph_delta
 
         objs = self.out(x)
         assert objs.shape == torch.Size([bsz, num_nodes, self.out_dim])

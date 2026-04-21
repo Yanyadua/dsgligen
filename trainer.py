@@ -250,6 +250,7 @@ class Trainer:
         params = []
         trainable_names = []
         all_params_name = []
+        freeze_position_base = getattr(config, "freeze_position_base", False)
         for name, p in self.model.named_parameters():
             if ("transformer_blocks" in name) and ("fuser" in name):
                 # New added Attention layers. Freeze for encoder-only ablations.
@@ -257,9 +258,23 @@ class Trainer:
                     params.append(p)
                     trainable_names.append(name)
             elif  "position_net" in name:
-                # Grounding token processing network 
-                params.append(p) 
-                trainable_names.append(name)
+                # For graph-adapter ablations, keep the object/box MLP path fixed
+                # and train only the scene-graph residual branch.
+                if freeze_position_base:
+                    is_graph_adapter_param = (
+                        "position_net.gat_layers" in name
+                        or "position_net.graph_gate" in name
+                        or "position_net.graph_adapter" in name
+                    )
+                    if is_graph_adapter_param:
+                        params.append(p)
+                        trainable_names.append(name)
+                    else:
+                        p.requires_grad = False
+                else:
+                    # Grounding token processing network
+                    params.append(p)
+                    trainable_names.append(name)
             elif  "downsample_net" in name:
                 # Grounding downsample network (used in input) 
                 params.append(p) 
