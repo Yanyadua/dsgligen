@@ -30,6 +30,10 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int,  default=2, help="")
     parser.add_argument("--workers", type=int,  default=1, help="")
     parser.add_argument("--official_ckpt_name", type=str,  default="sd-v1-4.ckpt", help="SD ckpt name and it is expected in DATA_ROOT, thus DATA_ROOT/official_ckpt_name must exists")
+    parser.add_argument("--init_from_gligen_ckpt", type=lambda x:x if type(x) == str and x.lower() != "none" else None, default=None,
+        help="Initialize model/text_encoder/autoencoder/diffusion from a GLIGEN training checkpoint. Useful when sd-v1-4.ckpt is unavailable.")
+    parser.add_argument("--grounding_ckpt", type=lambda x:x if type(x) == str and x.lower() != "none" else None, default=None,
+        help="Load a lightweight grounding/position_net checkpoint for evaluation or resume.")
     parser.add_argument("--ckpt", type=lambda x:x if type(x) == str and x.lower() != "none" else None,  default=None, 
         help=("If given, then it will start training from this ckpt"
               "It has higher prioty than official_ckpt_name, but lower than the ckpt found in autoresuming (see trainer.py) "
@@ -41,11 +45,16 @@ if __name__ == "__main__":
     parser.add_argument('--random_add_bg_mask', default=False, type=lambda x:x.lower() == "true", help="Only used if inpaint_mode is true. If true, 0.5 chance add arbitrary mask for the whole image. See code for details")
     
     parser.add_argument('--enable_ema', default=False, type=lambda x:x.lower() == "true")
+    parser.add_argument('--freeze_fuser', default=False, type=lambda x:x.lower() == "true",
+        help="If true, freeze GLIGEN gated fuser layers and train only grounding-related modules such as position_net.")
     parser.add_argument("--ema_rate", type=float,  default=0.9999, help="")
     parser.add_argument("--total_iters", type=int,  default=500000, help="")
     parser.add_argument("--save_every_iters", type=int,  default=5000, help="")
     parser.add_argument("--disable_inference_in_training", type=lambda x:x.lower() == "true",  default=False, help="Do not do inference, thus it is faster to run first a few iters. It may be useful for debugging ")
-
+    parser.add_argument("--disable_saving_in_training", type=lambda x:x.lower() == "true", default=False,
+        help="Do not save checkpoints during quick smoke/debug training runs.")
+    parser.add_argument("--save_trainable_only", type=lambda x:x.lower() == "true", default=False,
+        help="Save only trainable model tensors such as position_net/fuser instead of the full GLIGEN checkpoint.")
 
     args = parser.parse_args()
     assert args.scheduler_type in ['cosine', 'constant']

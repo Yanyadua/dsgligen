@@ -184,7 +184,15 @@ class Trainer:
         self.diffusion = instantiate_from_config(config.diffusion).to(self.device)
 
         
-        state_dict = read_official_ckpt(  os.path.join(config.DATA_ROOT, config.official_ckpt_name)   )
+        init_from_gligen_ckpt = getattr(config, "init_from_gligen_ckpt", None)
+        if init_from_gligen_ckpt is not None:
+            if get_rank() == 0:
+                print("initializing from GLIGEN checkpoint " + init_from_gligen_ckpt)
+            state_dict = torch.load(init_from_gligen_ckpt, map_location="cpu")
+            for key in ["model", "autoencoder", "text_encoder", "diffusion"]:
+                assert key in state_dict, f"{init_from_gligen_ckpt} is missing {key}"
+        else:
+            state_dict = read_official_ckpt(  os.path.join(config.DATA_ROOT, config.official_ckpt_name)   )
         
         # modify the input conv for SD if necessary (grounding as unet input; inpaint)
         additional_channels = self.model.additional_channel_from_downsampler
@@ -193,13 +201,23 @@ class Trainer:
         add_additional_channels(state_dict["model"], additional_channels)
         self.input_conv_train = True if additional_channels>0 else False
 
-        # load original SD ckpt (with inuput conv may be modified) 
-        missing_keys, unexpected_keys = self.model.load_state_dict( state_dict["model"], strict=False  )
-        assert unexpected_keys == []
-        original_params_names = list( state_dict["model"].keys()  ) # used for sanity check later 
+        # load original SD/GLIGEN ckpt (with input conv may be modified)
+        if init_from_gligen_ckpt is not None:
+            compatible_model_state = {
+                k: v for k, v in state_dict["model"].items()
+                if (k in self.model.state_dict() and self.model.state_dict()[k].shape == v.shape)
+            }
+            missing_keys, unexpected_keys = self.model.load_state_dict(compatible_model_state, strict=False)
+            if get_rank() == 0:
+                skipped = len(state_dict["model"]) - len(compatible_model_state)
+                print(f"loaded {len(compatible_model_state)} compatible model tensors, skipped {skipped}")
+        else:
+            missing_keys, unexpected_keys = self.model.load_state_dict( state_dict["model"], strict=False  )
+            assert unexpected_keys == []
+        original_params_names = list( self.model.state_dict().keys()  ) # used for sanity check later
         
         self.autoencoder.load_state_dict( state_dict["autoencoder"]  )
-        self.text_encoder.load_state_dict( state_dict["text_encoder"]  )
+        self.text_encoder.load_state_dict( state_dict["text_encoder"], strict=False  )
         self.diffusion.load_state_dict( state_dict["diffusion"]  )
  
         self.autoencoder.eval()
@@ -212,6 +230,21 @@ class Trainer:
             first_stage_ckpt = torch.load(self.config.ckpt, map_location="cpu")
             self.model.load_state_dict(first_stage_ckpt["model"])
 
+        grounding_ckpt = getattr(self.config, "grounding_ckpt", None)
+        if grounding_ckpt is not None:
+            grounding_state = torch.load(grounding_ckpt, map_location="cpu")
+            grounding_state = grounding_state.get("model_trainable", grounding_state.get("model", {}))
+            current_state = self.model.state_dict()
+            compatible_grounding = {
+                k: v for k, v in grounding_state.items()
+                if k in current_state and current_state[k].shape == v.shape
+            }
+            current_state.update(compatible_grounding)
+            self.model.load_state_dict(current_state, strict=True)
+            if get_rank() == 0:
+                skipped = len(grounding_state) - len(compatible_grounding)
+                print(f"loaded {len(compatible_grounding)} compatible grounding tensors from {grounding_ckpt}, skipped {skipped}")
+
 
         # = = = = = = = = = = = = = = = = = create opt = = = = = = = = = = = = = = = = = #
         params = []
@@ -219,9 +252,10 @@ class Trainer:
         all_params_name = []
         for name, p in self.model.named_parameters():
             if ("transformer_blocks" in name) and ("fuser" in name):
-                # New added Attention layers 
-                params.append(p) 
-                trainable_names.append(name)
+                # New added Attention layers. Freeze for encoder-only ablations.
+                if not getattr(config, "freeze_fuser", False):
+                    params.append(p)
+                    trainable_names.append(name)
             elif  "position_net" in name:
                 # Grounding token processing network 
                 params.append(p) 
@@ -242,6 +276,7 @@ class Trainer:
             all_params_name.append(name) 
 
 
+        self.trainable_names = trainable_names
         self.opt = torch.optim.AdamW(params, lr=config.base_learning_rate, weight_decay=config.weight_decay) 
         count_params(params)
         
@@ -364,9 +399,25 @@ class Trainer:
                     grounding_input=grounding_input)
         model_output = self.model(input)
         
-        loss = torch.nn.functional.mse_loss(model_output, noise) * self.l_simple_weight
+        diffusion_loss = torch.nn.functional.mse_loss(model_output, noise) * self.l_simple_weight
+        loss = diffusion_loss
+        self.loss_dict = {"loss": loss.item(), "diffusion_loss": diffusion_loss.item()}
 
-        self.loss_dict = {"loss": loss.item()}
+        object_align_loss_weight = getattr(self.config, "object_align_loss_weight", 0.0)
+        if object_align_loss_weight > 0:
+            object_tokens = self.model.position_net(**grounding_input)
+            positive_embeddings = grounding_input["positive_embeddings"].detach()
+            masks = grounding_input["masks"].to(dtype=object_tokens.dtype)
+            object_tokens = torch.nn.functional.normalize(object_tokens, dim=-1)
+            positive_embeddings = torch.nn.functional.normalize(positive_embeddings, dim=-1)
+            per_object_align = 1 - (object_tokens * positive_embeddings).sum(dim=-1)
+            object_align_loss = (per_object_align * masks).sum() / masks.sum().clamp(min=1)
+            loss = loss + object_align_loss_weight * object_align_loss
+            self.loss_dict = {
+                "loss": loss.item(),
+                "diffusion_loss": diffusion_loss.item(),
+                "object_align_loss": object_align_loss.item(),
+            }
 
         return loss 
         
@@ -394,7 +445,7 @@ class Trainer:
             if (get_rank() == 0):
                 if (iter_idx % 10 == 0):
                     self.log_loss() 
-                if (iter_idx == 0)  or  ( iter_idx % self.config.save_every_iters == 0 )  or  (iter_idx == self.config.total_iters-1):
+                if (not getattr(self.config, "disable_saving_in_training", False)) and ((iter_idx == 0)  or  ( iter_idx % self.config.save_every_iters == 0 )  or  (iter_idx == self.config.total_iters-1)):
                     self.save_ckpt_and_result()
             synchronize()
 
@@ -469,18 +520,31 @@ class Trainer:
             masked_real_image =  batch["image"]*torch.nn.functional.interpolate(inpainting_mask, size=(512, 512)) if self.config.inpaint_mode else None
             self.image_caption_saver(samples, real_images_with_box_drawing,  masked_real_image, batch["caption"], iter_name)
 
-        ckpt = dict(model = model_wo_wrapper.state_dict(),
-                    text_encoder = self.text_encoder.state_dict(),
-                    autoencoder = self.autoencoder.state_dict(),
-                    diffusion = self.diffusion.state_dict(),
-                    opt = self.opt.state_dict(),
-                    scheduler= self.scheduler.state_dict(),
-                    iters = self.iter_idx+1,
-                    config_dict=self.config_dict,
-        )
-        if self.config.enable_ema:
-            ckpt["ema"] = self.ema.state_dict()
+        if getattr(self.config, "save_trainable_only", False):
+            full_model_state = model_wo_wrapper.state_dict()
+            trainable_name_set = set(self.trainable_names)
+            model_trainable = {
+                k: v.detach().cpu()
+                for k, v in full_model_state.items()
+                if k in trainable_name_set
+            }
+            ckpt = dict(model_trainable=model_trainable,
+                        opt=self.opt.state_dict(),
+                        scheduler=self.scheduler.state_dict(),
+                        iters=self.iter_idx+1,
+                        config_dict=self.config_dict,
+                        trainable_names=self.trainable_names)
+        else:
+            ckpt = dict(model = model_wo_wrapper.state_dict(),
+                        text_encoder = self.text_encoder.state_dict(),
+                        autoencoder = self.autoencoder.state_dict(),
+                        diffusion = self.diffusion.state_dict(),
+                        opt = self.opt.state_dict(),
+                        scheduler= self.scheduler.state_dict(),
+                        iters = self.iter_idx+1,
+                        config_dict=self.config_dict,
+            )
+            if self.config.enable_ema:
+                ckpt["ema"] = self.ema.state_dict()
         torch.save( ckpt, os.path.join(self.name, "checkpoint_"+str(iter_name).zfill(8)+".pth") )
         torch.save( ckpt, os.path.join(self.name, "checkpoint_latest.pth") )
-
-

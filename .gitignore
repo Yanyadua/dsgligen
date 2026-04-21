@@ -85,3 +85,18 @@ target/
 lib/pycocotools/_mask.c
 lib/nms/cpu_nms.c
 
+
+# Local training artifacts
+.DS_Store
+OUTPUT*/
+eval_outputs/
+gligen_checkpoints/
+generation_samples*/
+run_logs/
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+*.jpg
+*.jpeg
+*.png

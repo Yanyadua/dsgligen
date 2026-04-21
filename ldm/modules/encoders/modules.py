@@ -4,7 +4,7 @@ from functools import partial
 import clip
 from einops import rearrange, repeat
 from transformers import CLIPTokenizer, CLIPTextModel
-import kornia
+import torch.nn.functional as F
 
 from ldm.modules.x_transformer import Encoder, TransformerWrapper  # TODO: can we directly rely on lucidrains code and simply add this as a reuirement? --> test
 
@@ -226,12 +226,10 @@ class FrozenClipImageEmbedder(nn.Module):
 
     def preprocess(self, x):
         # normalize to [0,1]
-        x = kornia.geometry.resize(x, (224, 224),
-                                   interpolation='bicubic',align_corners=True,
-                                   antialias=self.antialias)
+        x = F.interpolate(x, size=(224, 224), mode="bicubic", align_corners=True)
         x = (x + 1.) / 2.
         # renormalize according to clip
-        x = kornia.enhance.normalize(x, self.mean, self.std)
+        x = (x - self.mean.view(1, -1, 1, 1)) / self.std.view(1, -1, 1, 1)
         return x
 
     def forward(self, x):
