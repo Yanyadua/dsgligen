@@ -92,6 +92,15 @@ def batch_to_device(batch, device):
     return batch
 
 
+def normalize_collated_text_grid(value, batch_size):
+    """Default PyTorch collation transposes fixed-length string lists."""
+    if value is None:
+        return None
+    if len(value) == batch_size and all(isinstance(row, (list, tuple)) for row in value):
+        return [list(row) for row in value]
+    return [list(items) for items in zip(*value)]
+
+
 def sub_batch(batch, num=1):
     # choose first num in given batch 
     num = num if num > 1 else 1 
@@ -372,6 +381,28 @@ class Trainer:
             self.model = DDP( self.model, device_ids=[config.local_rank], output_device=config.local_rank, broadcast_buffers=False )
 
 
+    @torch.no_grad()
+    def encode_grounding_text_features(self, texts):
+        _, pooler_output = self.text_encoder.encode(texts, return_pooler_output=True)
+        return pooler_output
+
+
+    @torch.no_grad()
+    def ensure_scene_graph_text_embeddings(self, batch):
+        batch_size = batch["image"].shape[0]
+
+        object_texts = normalize_collated_text_grid(batch.get("object_texts"), batch_size)
+        if object_texts is not None:
+            flat_object_texts = [text if text else "" for row in object_texts for text in row]
+            object_embeddings = self.encode_grounding_text_features(flat_object_texts)
+            batch["text_embeddings"] = object_embeddings.view(batch_size, len(object_texts[0]), -1)
+
+        relation_texts = normalize_collated_text_grid(batch.get("relation_texts"), batch_size)
+        if relation_texts is not None:
+            flat_relation_texts = [text if text else "" for row in relation_texts for text in row]
+            relation_embeddings = self.encode_grounding_text_features(flat_relation_texts)
+            batch["relation_embeddings"] = relation_embeddings.view(batch_size, len(relation_texts[0]), -1)
+
 
 
 
@@ -401,6 +432,7 @@ class Trainer:
 
 
     def run_one_step(self, batch):
+        self.ensure_scene_graph_text_embeddings(batch)
         x_start, t, context, inpainting_extra_input, grounding_extra_input = self.get_input(batch)
         noise = torch.randn_like(x_start)
         x_noisy = self.diffusion.q_sample(x_start=x_start, t=t, noise=noise)
@@ -487,6 +519,7 @@ class Trainer:
             batch_here = self.config.batch_size
             batch = sub_batch( next(self.loader_train), batch_here)
             batch_to_device(batch, self.device)
+            self.ensure_scene_graph_text_embeddings(batch)
 
             
             if "boxes" in batch:

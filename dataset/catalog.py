@@ -14,6 +14,14 @@ class DatasetCatalog:
             ),
         }
 
+        self.VGSceneGraphRaw = {
+            "target": "dataset.dataset_vg_scene_graph.VGSceneGraphDataset",
+            "train_params": dict(
+                image_root=os.path.join(ROOT, 'VG/images'),
+                scene_graphs_json=os.path.join(ROOT, 'VG/annotations/scene_graphs.json'),
+            ),
+        }
+
 
         # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
 
@@ -133,7 +141,6 @@ class DatasetCatalog:
                 caption_path = os.path.join(ROOT,'ADE/ade_train_images_cation.json'),
             ),
         }
-
 
 
 
