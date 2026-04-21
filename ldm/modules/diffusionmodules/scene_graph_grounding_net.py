@@ -153,3 +153,82 @@ class PositionNet(nn.Module):
         objs = self.out(x)
         assert objs.shape == torch.Size([bsz, num_nodes, self.out_dim])
         return objs
+
+
+class CompatiblePositionNet(nn.Module):
+    """GLIGEN-compatible grounding encoder with optional scene-graph residuals.
+
+    The base path intentionally keeps the original GLIGEN ``linears`` module
+    names and shapes so pretrained text-box grounding weights can be loaded
+    directly. Scene-graph propagation, when enabled, is only a gated residual on
+    top of those pretrained object tokens.
+    """
+
+    def __init__(
+        self,
+        in_dim,
+        out_dim,
+        fourier_freqs=8,
+        gat_layers=0,
+        gat_heads=4,
+        relation_dim=None,
+        dropout=0.0,
+        graph_gate_init=-5.0,
+        use_graph_adapter=False,
+        graph_adapter_ratio=0.25,
+    ):
+        super().__init__()
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.relation_dim = relation_dim
+        self.use_graph_adapter = use_graph_adapter
+
+        self.fourier_embedder = FourierEmbedder(num_freqs=fourier_freqs)
+        self.position_dim = fourier_freqs * 2 * 4
+        self.linears = nn.Sequential(
+            nn.Linear(self.in_dim + self.position_dim, 512),
+            nn.SiLU(),
+            nn.Linear(512, 512),
+            nn.SiLU(),
+            nn.Linear(512, out_dim),
+        )
+
+        self.gat_layers = nn.ModuleList([
+            SceneGraphGATLayer(out_dim, edge_dim=relation_dim, heads=gat_heads, dropout=dropout)
+            for _ in range(gat_layers)
+        ])
+        self.graph_gate = nn.Parameter(torch.tensor(float(graph_gate_init))) if gat_layers > 0 else None
+        adapter_hidden_dim = max(1, int(out_dim * graph_adapter_ratio))
+        self.graph_adapter = nn.Sequential(
+            nn.LayerNorm(out_dim),
+            nn.Linear(out_dim, adapter_hidden_dim),
+            nn.SiLU(),
+            nn.Linear(adapter_hidden_dim, out_dim),
+        ) if use_graph_adapter and gat_layers > 0 else None
+
+        self.null_positive_feature = nn.Parameter(torch.zeros([in_dim]))
+        self.null_position_feature = nn.Parameter(torch.zeros([self.position_dim]))
+
+    def forward(self, boxes, masks, positive_embeddings, relation_edges=None, relation_embeddings=None, relation_masks=None):
+        bsz, num_nodes, _ = boxes.shape
+        masks = masks.to(dtype=positive_embeddings.dtype)
+        mask_3d = masks.unsqueeze(-1)
+
+        xyxy_embedding = self.fourier_embedder(boxes)
+        positive_embeddings = positive_embeddings * mask_3d + (1 - mask_3d) * self.null_positive_feature.view(1, 1, -1)
+        xyxy_embedding = xyxy_embedding * mask_3d + (1 - mask_3d) * self.null_position_feature.view(1, 1, -1)
+
+        x_base = self.linears(torch.cat([positive_embeddings, xyxy_embedding], dim=-1)) * mask_3d
+        x = x_base
+        for layer in self.gat_layers:
+            x = layer(x, masks, relation_edges=relation_edges, relation_embeddings=relation_embeddings, relation_masks=relation_masks)
+
+        if self.graph_gate is not None:
+            gate = torch.sigmoid(self.graph_gate).to(dtype=x.dtype)
+            graph_delta = x - x_base
+            if self.graph_adapter is not None:
+                graph_delta = self.graph_adapter(graph_delta)
+            x = x_base + gate * graph_delta
+
+        assert x.shape == torch.Size([bsz, num_nodes, self.out_dim])
+        return x

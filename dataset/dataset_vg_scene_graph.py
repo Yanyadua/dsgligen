@@ -14,6 +14,14 @@ DEFAULT_GENERIC_OBJECTS = {
     "sidewalk", "sky", "street", "wall", "window", "windows",
 }
 
+DEFAULT_PRIORITY_OBJECTS = {
+    "airplane", "animal", "backpack", "bear", "bench", "bicycle", "bird", "boat",
+    "bus", "car", "cat", "child", "couch", "cow", "desk", "dog", "elephant",
+    "girl", "guy", "horse", "keyboard", "laptop", "man", "monitor", "motorcycle",
+    "person", "sheep", "sofa", "table", "teddy bear", "train", "truck", "tv",
+    "woman", "zebra",
+}
+
 
 def object_name(obj):
     names = obj.get("names") or [obj.get("name", "object")]
@@ -55,6 +63,7 @@ class VGSceneGraphDataset(BaseDataset):
         min_objects=2,
         min_relations=1,
         generic_object_names=None,
+        priority_object_names=None,
         max_caption_objects=8,
         max_caption_relations=4,
     ):
@@ -65,6 +74,7 @@ class VGSceneGraphDataset(BaseDataset):
         self.max_boxes_per_data = max_boxes_per_data
         self.max_relations_per_data = max_relations_per_data
         self.generic_object_names = set(generic_object_names or DEFAULT_GENERIC_OBJECTS)
+        self.priority_object_names = set(priority_object_names or DEFAULT_PRIORITY_OBJECTS)
         self.max_caption_objects = max_caption_objects
         self.max_caption_relations = max_caption_relations
 
@@ -132,14 +142,15 @@ class VGSceneGraphDataset(BaseDataset):
             area = float((box[2] - box[0]) * (box[3] - box[1]))
             name = object_name(obj)
             is_generic = name in self.generic_object_names
+            is_priority = name in self.priority_object_names
             is_related = obj.get("object_id") in related_object_ids
-            kept_objects.append((obj, box, area, is_related, is_generic))
+            kept_objects.append((obj, box, area, is_related, is_generic, is_priority))
 
         # Prefer salient foreground objects over relation-heavy background
         # tokens such as wall/floor/street, then keep larger boxes.
-        kept_objects.sort(key=lambda pair: (pair[3] and not pair[4], not pair[4], pair[3], pair[2]), reverse=True)
+        kept_objects.sort(key=lambda pair: (pair[5], pair[3] and not pair[4], not pair[4], pair[3], pair[2]), reverse=True)
         kept_objects = kept_objects[: self.max_boxes_per_data]
-        for idx, (obj, box, _, _, _) in enumerate(kept_objects):
+        for idx, (obj, box, _, _, _, _) in enumerate(kept_objects):
             boxes[idx] = box
             masks[idx] = 1
             text = object_name(obj)
@@ -169,7 +180,12 @@ class VGSceneGraphDataset(BaseDataset):
             for i, (src, dst) in enumerate(rel_edges.long().tolist())
             if rel_masks[i] > 0
         ]
-        object_part = ", ".join(valid_object_texts[: self.max_caption_objects])
+        caption_object_texts = sorted(
+            valid_object_texts,
+            key=lambda text: (text in self.priority_object_names, text not in self.generic_object_names),
+            reverse=True,
+        )
+        object_part = ", ".join(caption_object_texts[: self.max_caption_objects])
         relation_part = ". ".join(valid_relation_texts[: self.max_caption_relations])
         if object_part and relation_part:
             caption = f"A scene with {object_part}. {relation_part}."
