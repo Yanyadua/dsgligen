@@ -125,6 +125,11 @@ sample_paths = []
 
 for label, yaml_file, ckpt_file in EXPS:
     print("SAMPLING", label, flush=True)
+    out_path = OUT / f"{label}_samples.png"
+    if out_path.exists():
+        print("  skip existing", out_path, flush=True)
+        sample_paths.append((label, out_path))
+        continue
     cfg, model, autoencoder, text_encoder, diffusion, grounding_tokenizer_input = load_model(yaml_file, ckpt_file)
     sampler = PLMSSampler(diffusion, model)
     decoded_list = []
@@ -150,7 +155,6 @@ for label, yaml_file, ckpt_file in EXPS:
             del batch, context, uc, grounding_input, input_dict, samples, decoded
             torch.cuda.empty_cache()
     decoded_all = torch.stack(decoded_list, dim=0)
-    out_path = OUT / f"{label}_samples.png"
     torchvision.utils.save_image(
         decoded_all,
         out_path,
