@@ -65,9 +65,12 @@ def encode_text_grid(text_encoder, batch, source_key, target_key):
     rows = batch.get(source_key)
     if not rows:
         return
-    flat = [text if text else "" for row in rows for text in row]
+    width = max((len(row) for row in rows), default=0)
+    if width == 0:
+        return
+    flat = [row[i] if i < len(row) and row[i] else "" for row in rows for i in range(width)]
     _, pooled = text_encoder.encode(flat, return_pooler_output=True)
-    batch[target_key] = pooled.view(len(rows), len(rows[0]), -1)
+    batch[target_key] = pooled.view(len(rows), width, -1)
 
 
 def load_model(yaml_file, ckpt_file):
