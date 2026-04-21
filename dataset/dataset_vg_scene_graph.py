@@ -8,6 +8,13 @@ from PIL import Image
 from .base_dataset import BaseDataset, recalculate_box_and_verify_if_valid
 
 
+DEFAULT_GENERIC_OBJECTS = {
+    "air", "background", "building", "carpet", "ceiling", "cloud", "curtain",
+    "curtains", "drape", "floor", "grass", "ground", "road", "shade", "shadow",
+    "sidewalk", "sky", "street", "wall", "window", "windows",
+}
+
+
 def object_name(obj):
     names = obj.get("names") or [obj.get("name", "object")]
     return str(names[0]).lower()
@@ -47,6 +54,9 @@ class VGSceneGraphDataset(BaseDataset):
         random_flip=True,
         min_objects=2,
         min_relations=1,
+        generic_object_names=None,
+        max_caption_objects=8,
+        max_caption_relations=4,
     ):
         super().__init__(random_crop=random_crop, random_flip=random_flip, image_size=image_size)
         self.image_root = image_root
@@ -54,6 +64,9 @@ class VGSceneGraphDataset(BaseDataset):
         self.min_box_size = min_box_size
         self.max_boxes_per_data = max_boxes_per_data
         self.max_relations_per_data = max_relations_per_data
+        self.generic_object_names = set(generic_object_names or DEFAULT_GENERIC_OBJECTS)
+        self.max_caption_objects = max_caption_objects
+        self.max_caption_relations = max_caption_relations
 
         with open(scene_graphs_json, "r", encoding="utf-8") as f:
             records = json.load(f)
@@ -91,8 +104,15 @@ class VGSceneGraphDataset(BaseDataset):
         image = Image.open(record["_image_path"]).convert("RGB")
         image_tensor, trans_info = self.transform_image(image)
 
+        raw_relations = list(record.get("relationships", []))
+        related_object_ids = set()
+        for rel in raw_relations:
+            for key in ("subject_id", "object_id"):
+                object_id = relation_object_id(rel, key)
+                if object_id is not None:
+                    related_object_ids.add(object_id)
+
         objects = list(record.get("objects", []))
-        random.shuffle(objects)
 
         boxes = torch.zeros(self.max_boxes_per_data, 4)
         masks = torch.zeros(self.max_boxes_per_data)
@@ -108,13 +128,18 @@ class VGSceneGraphDataset(BaseDataset):
             )
             if not valid:
                 continue
-            kept_objects.append((obj, torch.tensor([x0, y0, x1, y1]) / self.image_size))
-            if len(kept_objects) >= self.max_boxes_per_data:
-                break
+            box = torch.tensor([x0, y0, x1, y1]) / self.image_size
+            area = float((box[2] - box[0]) * (box[3] - box[1]))
+            name = object_name(obj)
+            is_generic = name in self.generic_object_names
+            is_related = obj.get("object_id") in related_object_ids
+            kept_objects.append((obj, box, area, is_related, is_generic))
 
-        # Keep larger objects first for stable object slots.
-        kept_objects.sort(key=lambda pair: float((pair[1][2] - pair[1][0]) * (pair[1][3] - pair[1][1])), reverse=True)
-        for idx, (obj, box) in enumerate(kept_objects):
+        # Prefer salient foreground objects over relation-heavy background
+        # tokens such as wall/floor/street, then keep larger boxes.
+        kept_objects.sort(key=lambda pair: (pair[3] and not pair[4], not pair[4], pair[3], pair[2]), reverse=True)
+        kept_objects = kept_objects[: self.max_boxes_per_data]
+        for idx, (obj, box, _, _, _) in enumerate(kept_objects):
             boxes[idx] = box
             masks[idx] = 1
             text = object_name(obj)
@@ -125,7 +150,7 @@ class VGSceneGraphDataset(BaseDataset):
         rel_masks = torch.zeros(self.max_relations_per_data)
         relation_texts = [""] * self.max_relations_per_data
         rel_count = 0
-        for rel in record.get("relationships", []):
+        for rel in raw_relations:
             subject_idx = object_id_to_idx.get(relation_object_id(rel, "subject_id"))
             object_idx = object_id_to_idx.get(relation_object_id(rel, "object_id"))
             if subject_idx is None or object_idx is None:
@@ -144,8 +169,14 @@ class VGSceneGraphDataset(BaseDataset):
             for i, (src, dst) in enumerate(rel_edges.long().tolist())
             if rel_masks[i] > 0
         ]
-        caption_parts = valid_relation_texts[:8] or valid_object_texts[:8]
-        caption = ". ".join(caption_parts) + "." if caption_parts else "objects."
+        object_part = ", ".join(valid_object_texts[: self.max_caption_objects])
+        relation_part = ". ".join(valid_relation_texts[: self.max_caption_relations])
+        if object_part and relation_part:
+            caption = f"A scene with {object_part}. {relation_part}."
+        elif object_part:
+            caption = f"A scene with {object_part}."
+        else:
+            caption = "A scene with objects."
 
         return {
             "id": record["image_id"],

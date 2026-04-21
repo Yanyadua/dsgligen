@@ -60,7 +60,7 @@ def one_item_batch(item):
 @torch.no_grad()
 def encode_text_grid(text_encoder, batch, source_key, target_key):
     rows = batch.get(source_key)
-    if rows is None:
+    if not rows:
         return
     flat = [text if text else "" for row in rows for text in row]
     _, pooled = text_encoder.encode(flat, return_pooler_output=True)
