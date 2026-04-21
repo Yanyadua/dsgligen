@@ -25,13 +25,16 @@ RAW_CKPT = os.environ.get(
     "RAW_CKPT",
     "OUTPUT_RAW_VG/vg_raw_scene_graph_adapter_2k/tag00/checkpoint_00000500.pth",
 )
+RAW_YAML = os.environ.get("RAW_YAML", "configs/vg_raw_scene_graph_adapter.yaml")
+RAW_LABEL = os.environ.get("RAW_LABEL", "raw_gat_adapter")
+DATA_YAML = os.environ.get("DATA_YAML", RAW_YAML)
 OUT = Path(os.environ.get("OUT_DIR", "eval_outputs/raw_vg_compare"))
 OUT.mkdir(parents=True, exist_ok=True)
 
 EXPS = [
     ("baseline", "configs/vg_text_box_baseline.yaml", "OUTPUT_LONG_FIXED/vg_text_box_baseline_5k/tag00/checkpoint_00005000.pth"),
     ("mlp", "configs/vg_scene_graph_mlp.yaml", "OUTPUT_LONG_FIXED/vg_scene_graph_mlp_5k/tag00/checkpoint_00005000.pth"),
-    ("raw_gat_adapter", "configs/vg_raw_scene_graph_adapter.yaml", RAW_CKPT),
+    (RAW_LABEL, RAW_YAML, RAW_CKPT),
 ]
 
 SELECTED_INDICES = [int(x) for x in os.environ.get("SAMPLE_INDICES", "0,1,2,3").split(",")]
@@ -105,7 +108,7 @@ def load_model(yaml_file, ckpt_file):
 
 
 set_seed(SEED)
-raw_cfg = OmegaConf.load("configs/vg_raw_scene_graph_adapter.yaml")
+raw_cfg = OmegaConf.load(DATA_YAML)
 raw_cfg.DATA_ROOT = "DATA"
 raw_cfg.train_dataset_names.VGSceneGraphRaw.random_flip = False
 raw_cfg.train_dataset_names.VGSceneGraphRaw.random_crop = False
