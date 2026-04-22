@@ -468,6 +468,30 @@ class Trainer:
                 "object_align_loss": object_align_loss.item(),
             }
 
+        spatial_consistency_loss_weight = getattr(self.config, "spatial_consistency_loss_weight", 0.0)
+        if spatial_consistency_loss_weight > 0:
+            spatial_margin = getattr(self.config, "spatial_consistency_margin", 0.05)
+            positive_embeddings = grounding_input["positive_embeddings"].detach()
+            masks = grounding_input["masks"].to(dtype=positive_embeddings.dtype)
+
+            correct_tokens = self.model.position_net(**grounding_input)
+            shuffled_input = dict(grounding_input)
+            shuffled_input["boxes"] = torch.roll(grounding_input["boxes"], shifts=1, dims=1)
+            wrong_tokens = self.model.position_net(**shuffled_input)
+
+            correct_tokens = torch.nn.functional.normalize(correct_tokens, dim=-1)
+            wrong_tokens = torch.nn.functional.normalize(wrong_tokens, dim=-1)
+            positive_embeddings = torch.nn.functional.normalize(positive_embeddings, dim=-1)
+            positive_score = (correct_tokens * positive_embeddings).sum(dim=-1)
+            negative_score = (wrong_tokens * positive_embeddings).sum(dim=-1)
+            per_object_spatial = torch.relu(spatial_margin + negative_score - positive_score)
+            spatial_consistency_loss = (per_object_spatial * masks).sum() / masks.sum().clamp(min=1)
+            loss = loss + spatial_consistency_loss_weight * spatial_consistency_loss
+            self.loss_dict.update({
+                "loss": loss.item(),
+                "spatial_consistency_loss": spatial_consistency_loss.item(),
+            })
+
         return loss 
         
 
