@@ -28,13 +28,14 @@ RAW_CKPT = os.environ.get(
 RAW_YAML = os.environ.get("RAW_YAML", "configs/vg_raw_scene_graph_adapter.yaml")
 RAW_LABEL = os.environ.get("RAW_LABEL", "raw_gat_adapter")
 DATA_YAML = os.environ.get("DATA_YAML", RAW_YAML)
+RAW_BASE_GROUNDING_CKPT = os.environ.get("RAW_BASE_GROUNDING_CKPT")
 OUT = Path(os.environ.get("OUT_DIR", "eval_outputs/raw_vg_compare"))
 OUT.mkdir(parents=True, exist_ok=True)
 
 EXPS = [
-    ("baseline", "configs/vg_text_box_baseline.yaml", "OUTPUT_LONG_FIXED/vg_text_box_baseline_5k/tag00/checkpoint_00005000.pth"),
-    ("mlp", "configs/vg_scene_graph_mlp.yaml", "OUTPUT_LONG_FIXED/vg_scene_graph_mlp_5k/tag00/checkpoint_00005000.pth"),
-    (RAW_LABEL, RAW_YAML, RAW_CKPT),
+    ("baseline", "configs/vg_text_box_baseline.yaml", "OUTPUT_LONG_FIXED/vg_text_box_baseline_5k/tag00/checkpoint_00005000.pth", None),
+    ("mlp", "configs/vg_scene_graph_mlp.yaml", "OUTPUT_LONG_FIXED/vg_scene_graph_mlp_5k/tag00/checkpoint_00005000.pth", None),
+    (RAW_LABEL, RAW_YAML, RAW_CKPT, RAW_BASE_GROUNDING_CKPT),
 ]
 
 SELECTED_INDICES = [int(x) for x in os.environ.get("SAMPLE_INDICES", "0,1,2,3").split(",")]
@@ -73,7 +74,23 @@ def encode_text_grid(text_encoder, batch, source_key, target_key):
     batch[target_key] = pooled.view(len(rows), width, -1)
 
 
-def load_model(yaml_file, ckpt_file):
+def merge_trainable_checkpoint(model, ckpt_file):
+    light = torch.load(ckpt_file, map_location="cpu")
+    trainable = light.get("model_trainable", light.get("model", {}))
+    state = model.state_dict()
+    loaded = 0
+    skipped = []
+    for key, value in trainable.items():
+        if key in state and state[key].shape == value.shape:
+            state[key] = value
+            loaded += 1
+        else:
+            skipped.append(key)
+    model.load_state_dict(state, strict=True)
+    return loaded, skipped
+
+
+def load_model(yaml_file, ckpt_file, base_grounding_ckpt=None):
     cfg = OmegaConf.load(yaml_file)
     model = instantiate_from_config(cfg.model).to(DEVICE).eval()
     autoencoder = instantiate_from_config(cfg.autoencoder).to(DEVICE).eval()
@@ -91,18 +108,10 @@ def load_model(yaml_file, ckpt_file):
     text_encoder.load_state_dict(base["text_encoder"], strict=False)
     diffusion.load_state_dict(base["diffusion"])
 
-    light = torch.load(ckpt_file, map_location="cpu")
-    trainable = light.get("model_trainable", light.get("model", {}))
-    state = model.state_dict()
-    loaded = 0
-    skipped = []
-    for key, value in trainable.items():
-        if key in state and state[key].shape == value.shape:
-            state[key] = value
-            loaded += 1
-        else:
-            skipped.append(key)
-    model.load_state_dict(state, strict=True)
+    if base_grounding_ckpt:
+        base_loaded, base_skipped = merge_trainable_checkpoint(model, base_grounding_ckpt)
+        print("LOADED_BASE_GROUNDING", base_grounding_ckpt, "trainable", base_loaded, "skipped", len(base_skipped), flush=True)
+    loaded, skipped = merge_trainable_checkpoint(model, ckpt_file)
     print("LOADED", yaml_file, "trainable", loaded, "skipped", len(skipped), flush=True)
 
     grounding_tokenizer_input = instantiate_from_config(cfg.grounding_tokenizer_input)
@@ -141,7 +150,7 @@ set_seed(SEED + 99)
 noises = [torch.randn(noise_shape, device=DEVICE) for _ in items]
 sample_paths = []
 
-for label, yaml_file, ckpt_file in EXPS:
+for label, yaml_file, ckpt_file, base_grounding_ckpt in EXPS:
     out_path = OUT / f"{label}_samples.png"
     if out_path.exists():
         print("SKIP existing", out_path, flush=True)
@@ -152,7 +161,7 @@ for label, yaml_file, ckpt_file in EXPS:
         continue
 
     print("SAMPLING", label, flush=True)
-    cfg, model, autoencoder, text_encoder, diffusion, grounding_tokenizer_input = load_model(yaml_file, ckpt_file)
+    cfg, model, autoencoder, text_encoder, diffusion, grounding_tokenizer_input = load_model(yaml_file, ckpt_file, base_grounding_ckpt)
     sampler = PLMSSampler(diffusion, model)
     decoded_list = []
     with torch.no_grad():
