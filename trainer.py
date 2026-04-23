@@ -182,6 +182,9 @@ class Trainer:
 
         self.l_simple_weight = 1
         self.name, self.writer, checkpoint = create_expt_folder_with_auto_resuming(config.OUTPUT_ROOT, config.name)
+        self.graph_stats_interval = int(getattr(config, "graph_stats_interval", 50))
+        self.graph_stats_enabled = bool(getattr(config, "log_graph_stats", True))
+        self.graph_param_snapshot = None
         if get_rank() == 0:
             shutil.copyfile(config.yaml_file, os.path.join(self.name, "train_config_file.yaml")  )
             self.config_dict = vars(config)
@@ -382,6 +385,97 @@ class Trainer:
         if config.distributed:
             self.model = DDP( self.model, device_ids=[config.local_rank], output_device=config.local_rank, broadcast_buffers=False )
 
+    def get_graph_named_parameters(self):
+        model_wo_wrapper = self.model.module if self.config.distributed else self.model
+        position_net = getattr(model_wo_wrapper, "position_net", None)
+        if position_net is None:
+            return []
+
+        graph_prefixes = ("gat_layers.", "graph_gate", "graph_adapter.")
+        named_params = []
+        for name, param in position_net.named_parameters():
+            if any(name.startswith(prefix) for prefix in graph_prefixes):
+                named_params.append((name, param))
+        return named_params
+
+    def snapshot_graph_parameters(self):
+        if not self.graph_stats_enabled:
+            return
+        self.graph_param_snapshot = {
+            name: param.detach().float().cpu().clone()
+            for name, param in self.get_graph_named_parameters()
+        }
+
+    def log_graph_stats(self):
+        if (not self.graph_stats_enabled) or self.writer is None:
+            return
+
+        named_params = self.get_graph_named_parameters()
+        if len(named_params) == 0:
+            return
+
+        param_norm_sq = 0.0
+        grad_norm_sq = 0.0
+        update_norm_sq = 0.0
+        grad_abs_mean_values = []
+        update_abs_mean_values = []
+
+        for name, param in named_params:
+            param_data = param.detach().float()
+            param_norm_sq += float(param_data.pow(2).sum().item())
+
+            if param.grad is not None:
+                grad_data = param.grad.detach().float()
+                grad_norm_sq += float(grad_data.pow(2).sum().item())
+                grad_abs_mean_values.append(float(grad_data.abs().mean().item()))
+
+            if self.graph_param_snapshot is not None and name in self.graph_param_snapshot:
+                prev = self.graph_param_snapshot[name].to(param_data.device)
+                delta = param_data - prev
+                update_norm_sq += float(delta.pow(2).sum().item())
+                update_abs_mean_values.append(float(delta.abs().mean().item()))
+
+        self.writer.add_scalar("graph_stats/param_norm", math.sqrt(max(param_norm_sq, 0.0)), self.iter_idx + 1)
+        self.writer.add_scalar("graph_stats/grad_norm", math.sqrt(max(grad_norm_sq, 0.0)), self.iter_idx + 1)
+        self.writer.add_scalar("graph_stats/update_norm", math.sqrt(max(update_norm_sq, 0.0)), self.iter_idx + 1)
+
+        if grad_abs_mean_values:
+            self.writer.add_scalar(
+                "graph_stats/grad_abs_mean",
+                sum(grad_abs_mean_values) / len(grad_abs_mean_values),
+                self.iter_idx + 1,
+            )
+        if update_abs_mean_values:
+            self.writer.add_scalar(
+                "graph_stats/update_abs_mean",
+                sum(update_abs_mean_values) / len(update_abs_mean_values),
+                self.iter_idx + 1,
+            )
+
+        model_wo_wrapper = self.model.module if self.config.distributed else self.model
+        position_net = getattr(model_wo_wrapper, "position_net", None)
+        graph_gate = getattr(position_net, "graph_gate", None) if position_net is not None else None
+        if graph_gate is not None:
+            self.writer.add_scalar(
+                "graph_stats/graph_gate_sigmoid",
+                torch.sigmoid(graph_gate.detach()).item(),
+                self.iter_idx + 1,
+            )
+
+        for name, param in named_params:
+            safe_name = name.replace(".", "/")
+            self.writer.add_scalar(
+                f"graph_stats/per_param/{safe_name}_param_norm",
+                param.detach().float().norm().item(),
+                self.iter_idx + 1,
+            )
+            if param.grad is not None:
+                self.writer.add_scalar(
+                    f"graph_stats/per_param/{safe_name}_grad_norm",
+                    param.grad.detach().float().norm().item(),
+                    self.iter_idx + 1,
+                )
+
 
     @torch.no_grad()
     def encode_grounding_text_features(self, texts):
@@ -571,9 +665,14 @@ class Trainer:
             batch_to_device(batch, self.device)
 
             loss = self.run_one_step(batch)
+            should_log_graph_stats = self.graph_stats_enabled and (iter_idx % self.graph_stats_interval == 0)
+            if should_log_graph_stats:
+                self.snapshot_graph_parameters()
             loss.backward()
             self.opt.step() 
             self.scheduler.step()
+            if should_log_graph_stats and get_rank() == 0:
+                self.log_graph_stats()
             if self.config.enable_ema:
                 update_ema(self.ema_params, self.master_params, self.config.ema_rate)
 

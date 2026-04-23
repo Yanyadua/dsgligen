@@ -35,6 +35,8 @@ model:
         graph_adapter_ratio: 0.25
 
 object_align_loss_weight: 0.1
+log_graph_stats: true
+graph_stats_interval: 20
 
 autoencoder:
   target: ldm.models.autoencoder.AutoencoderKL

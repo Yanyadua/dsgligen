@@ -39,6 +39,8 @@ model:
 object_align_loss_weight: 0.05
 spatial_consistency_loss_weight: 0.05
 spatial_consistency_margin: 0.05
+log_graph_stats: true
+graph_stats_interval: 20
 
 autoencoder:
   target: ldm.models.autoencoder.AutoencoderKL
