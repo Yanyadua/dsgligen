@@ -41,6 +41,60 @@ def relation_object_id(rel, key):
     return None
 
 
+def compute_relation_geo_features(subject_box, object_box):
+    sx1, sy1, sx2, sy2 = subject_box.tolist()
+    ox1, oy1, ox2, oy2 = object_box.tolist()
+
+    sw = max(sx2 - sx1, 1e-6)
+    sh = max(sy2 - sy1, 1e-6)
+    ow = max(ox2 - ox1, 1e-6)
+    oh = max(oy2 - oy1, 1e-6)
+
+    scx = 0.5 * (sx1 + sx2)
+    scy = 0.5 * (sy1 + sy2)
+    ocx = 0.5 * (ox1 + ox2)
+    ocy = 0.5 * (oy1 + oy2)
+
+    dx = (scx - ocx) / ow
+    dy = (scy - ocy) / oh
+    dw = torch.log(torch.tensor(sw / ow, dtype=subject_box.dtype))
+    dh = torch.log(torch.tensor(sh / oh, dtype=subject_box.dtype))
+
+    inter_w = max(0.0, min(sx2, ox2) - max(sx1, ox1))
+    inter_h = max(0.0, min(sy2, oy2) - max(sy1, oy1))
+    inter = inter_w * inter_h
+    area_s = sw * sh
+    area_o = ow * oh
+    union = area_s + area_o - inter + 1e-6
+    iou = inter / union
+    inside_ratio = inter / (area_s + 1e-6)
+    overlap_ratio_subject = inter / (area_s + 1e-6)
+    overlap_ratio_object = inter / (area_o + 1e-6)
+
+    left_score = torch.sigmoid(torch.tensor(-dx, dtype=subject_box.dtype))
+    right_score = torch.sigmoid(torch.tensor(dx, dtype=subject_box.dtype))
+    above_score = torch.sigmoid(torch.tensor(-dy, dtype=subject_box.dtype))
+    below_score = torch.sigmoid(torch.tensor(dy, dtype=subject_box.dtype))
+
+    return torch.tensor(
+        [
+            dx,
+            dy,
+            dw.item(),
+            dh.item(),
+            iou,
+            inside_ratio,
+            overlap_ratio_subject,
+            overlap_ratio_object,
+            left_score.item(),
+            right_score.item(),
+            above_score.item(),
+            below_score.item(),
+        ],
+        dtype=subject_box.dtype,
+    )
+
+
 class VGSceneGraphDataset(BaseDataset):
     """Raw Visual Genome scene-graph dataset.
 
@@ -159,6 +213,7 @@ class VGSceneGraphDataset(BaseDataset):
 
         rel_edges = torch.zeros(self.max_relations_per_data, 2)
         rel_masks = torch.zeros(self.max_relations_per_data)
+        relation_geo_features = torch.zeros(self.max_relations_per_data, 12)
         relation_texts = [""] * self.max_relations_per_data
         rel_count = 0
         for rel in raw_relations:
@@ -171,6 +226,9 @@ class VGSceneGraphDataset(BaseDataset):
             predicate = str(rel.get("predicate", "related to")).lower()
             rel_edges[rel_count] = torch.tensor([subject_idx, object_idx])
             rel_masks[rel_count] = 1
+            relation_geo_features[rel_count] = compute_relation_geo_features(
+                boxes[subject_idx], boxes[object_idx]
+            )
             relation_texts[rel_count] = predicate
             rel_count += 1
 
@@ -207,5 +265,6 @@ class VGSceneGraphDataset(BaseDataset):
             "object_texts": object_texts,
             "relation_edges": rel_edges,
             "relation_masks": rel_masks,
+            "relation_geo_features": relation_geo_features,
             "relation_texts": relation_texts,
         }

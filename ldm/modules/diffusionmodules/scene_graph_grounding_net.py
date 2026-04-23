@@ -9,18 +9,23 @@ from ldm.modules.diffusionmodules.util import FourierEmbedder
 class SceneGraphGATLayer(nn.Module):
     """A compact edge-aware GAT layer for object-level scene graph tokens."""
 
-    def __init__(self, dim, edge_dim=None, heads=4, dropout=0.0):
+    def __init__(self, dim, edge_dim=None, geo_dim=None, heads=4, dropout=0.0):
         super().__init__()
         assert dim % heads == 0, "dim must be divisible by heads"
         self.dim = dim
         self.heads = heads
         self.head_dim = dim // heads
         self.edge_dim = edge_dim
+        self.geo_dim = geo_dim
 
         self.to_q = nn.Linear(dim, dim)
         self.to_k = nn.Linear(dim, dim)
         self.to_v = nn.Linear(dim, dim)
         self.edge_bias = nn.Linear(edge_dim, heads) if edge_dim is not None else None
+        self.geo_bias = nn.Sequential(
+            nn.LayerNorm(geo_dim),
+            nn.Linear(geo_dim, heads),
+        ) if geo_dim is not None else None
         self.out = nn.Sequential(nn.Linear(dim, dim), nn.Dropout(dropout))
         self.norm = nn.LayerNorm(dim)
         self.ff = nn.Sequential(
@@ -31,7 +36,15 @@ class SceneGraphGATLayer(nn.Module):
             nn.Linear(dim * 4, dim),
         )
 
-    def forward(self, x, node_masks, relation_edges=None, relation_embeddings=None, relation_masks=None):
+    def forward(
+        self,
+        x,
+        node_masks,
+        relation_edges=None,
+        relation_embeddings=None,
+        relation_masks=None,
+        relation_geo_features=None,
+    ):
         bsz, num_nodes, _ = x.shape
         residual = x
         x_norm = self.norm(x)
@@ -57,8 +70,14 @@ class SceneGraphGATLayer(nn.Module):
             rel_adj[batch_idx[valid_rel], 0, src[valid_rel], dst[valid_rel]] = True
             rel_adj[batch_idx[valid_rel], 0, dst[valid_rel], src[valid_rel]] = True
 
+            total_edge_bias = None
             if relation_embeddings is not None and self.edge_bias is not None:
-                edge_bias = self.edge_bias(relation_embeddings).permute(0, 2, 1)
+                total_edge_bias = self.edge_bias(relation_embeddings)
+            if relation_geo_features is not None and self.geo_bias is not None:
+                geo_edge_bias = self.geo_bias(relation_geo_features)
+                total_edge_bias = geo_edge_bias if total_edge_bias is None else total_edge_bias + geo_edge_bias
+            if total_edge_bias is not None:
+                edge_bias = total_edge_bias.permute(0, 2, 1)
                 for h in range(self.heads):
                     rel_bias[batch_idx[valid_rel], h, src[valid_rel], dst[valid_rel]] = edge_bias[:, h, :][valid_rel]
                     rel_bias[batch_idx[valid_rel], h, dst[valid_rel], src[valid_rel]] = edge_bias[:, h, :][valid_rel]
@@ -81,13 +100,14 @@ class SpatialRelationGATLayer(nn.Module):
     bbox-derived spatial messages, while relation text can only bias attention.
     """
 
-    def __init__(self, token_dim, position_dim, edge_dim=None, heads=4, dropout=0.0):
+    def __init__(self, token_dim, position_dim, edge_dim=None, geo_dim=None, heads=4, dropout=0.0):
         super().__init__()
         assert token_dim % heads == 0, "token_dim must be divisible by heads"
         self.token_dim = token_dim
         self.heads = heads
         self.head_dim = token_dim // heads
         self.edge_dim = edge_dim
+        self.geo_dim = geo_dim
 
         self.spatial_in = nn.Sequential(
             nn.LayerNorm(position_dim),
@@ -99,9 +119,21 @@ class SpatialRelationGATLayer(nn.Module):
         self.to_k = nn.Linear(token_dim, token_dim)
         self.to_v = nn.Linear(token_dim, token_dim)
         self.edge_bias = nn.Linear(edge_dim, heads) if edge_dim is not None else None
+        self.geo_bias = nn.Sequential(
+            nn.LayerNorm(geo_dim),
+            nn.Linear(geo_dim, heads),
+        ) if geo_dim is not None else None
         self.out = nn.Sequential(nn.Linear(token_dim, token_dim), nn.Dropout(dropout))
 
-    def forward(self, xyxy_embedding, node_masks, relation_edges=None, relation_embeddings=None, relation_masks=None):
+    def forward(
+        self,
+        xyxy_embedding,
+        node_masks,
+        relation_edges=None,
+        relation_embeddings=None,
+        relation_masks=None,
+        relation_geo_features=None,
+    ):
         bsz, num_nodes, _ = xyxy_embedding.shape
         spatial = self.spatial_in(xyxy_embedding) * node_masks.unsqueeze(-1)
 
@@ -126,8 +158,14 @@ class SpatialRelationGATLayer(nn.Module):
             rel_adj[batch_idx[valid_rel], 0, src[valid_rel], dst[valid_rel]] = True
             rel_adj[batch_idx[valid_rel], 0, dst[valid_rel], src[valid_rel]] = True
 
+            total_edge_bias = None
             if relation_embeddings is not None and self.edge_bias is not None:
-                edge_bias = self.edge_bias(relation_embeddings).permute(0, 2, 1)
+                total_edge_bias = self.edge_bias(relation_embeddings)
+            if relation_geo_features is not None and self.geo_bias is not None:
+                geo_edge_bias = self.geo_bias(relation_geo_features)
+                total_edge_bias = geo_edge_bias if total_edge_bias is None else total_edge_bias + geo_edge_bias
+            if total_edge_bias is not None:
+                edge_bias = total_edge_bias.permute(0, 2, 1)
                 for h in range(self.heads):
                     rel_bias[batch_idx[valid_rel], h, src[valid_rel], dst[valid_rel]] = edge_bias[:, h, :][valid_rel]
                     rel_bias[batch_idx[valid_rel], h, dst[valid_rel], src[valid_rel]] = edge_bias[:, h, :][valid_rel]
@@ -158,6 +196,7 @@ class PositionNet(nn.Module):
         gat_layers=2,
         gat_heads=4,
         relation_dim=None,
+        relation_geo_dim=None,
         dropout=0.0,
         graph_gate_init=-4.0,
         use_graph_adapter=False,
@@ -168,6 +207,7 @@ class PositionNet(nn.Module):
         self.out_dim = out_dim
         self.hidden_dim = hidden_dim
         self.relation_dim = relation_dim
+        self.relation_geo_dim = relation_geo_dim
         self.use_graph_adapter = use_graph_adapter
 
         self.fourier_embedder = FourierEmbedder(num_freqs=fourier_freqs)
@@ -178,7 +218,13 @@ class PositionNet(nn.Module):
             nn.Linear(hidden_dim, hidden_dim),
         )
         self.gat_layers = nn.ModuleList([
-            SceneGraphGATLayer(hidden_dim, edge_dim=relation_dim, heads=gat_heads, dropout=dropout)
+            SceneGraphGATLayer(
+                hidden_dim,
+                edge_dim=relation_dim,
+                geo_dim=relation_geo_dim,
+                heads=gat_heads,
+                dropout=dropout,
+            )
             for _ in range(gat_layers)
         ])
         # Start graph propagation as a small residual update. This keeps the
@@ -196,7 +242,16 @@ class PositionNet(nn.Module):
         self.null_positive_feature = nn.Parameter(torch.zeros([in_dim]))
         self.null_position_feature = nn.Parameter(torch.zeros([self.position_dim]))
 
-    def forward(self, boxes, masks, positive_embeddings, relation_edges=None, relation_embeddings=None, relation_masks=None):
+    def forward(
+        self,
+        boxes,
+        masks,
+        positive_embeddings,
+        relation_edges=None,
+        relation_embeddings=None,
+        relation_masks=None,
+        relation_geo_features=None,
+    ):
         bsz, num_nodes, _ = boxes.shape
         masks = masks.to(dtype=positive_embeddings.dtype)
         mask_3d = masks.unsqueeze(-1)
@@ -208,7 +263,14 @@ class PositionNet(nn.Module):
         x_base = self.node_in(torch.cat([positive_embeddings, xyxy_embedding], dim=-1)) * mask_3d
         x = x_base
         for layer in self.gat_layers:
-            x = layer(x, masks, relation_edges=relation_edges, relation_embeddings=relation_embeddings, relation_masks=relation_masks)
+            x = layer(
+                x,
+                masks,
+                relation_edges=relation_edges,
+                relation_embeddings=relation_embeddings,
+                relation_masks=relation_masks,
+                relation_geo_features=relation_geo_features,
+            )
 
         if self.graph_gate is not None:
             gate = torch.sigmoid(self.graph_gate).to(dtype=x.dtype)
@@ -239,6 +301,7 @@ class CompatiblePositionNet(nn.Module):
         gat_layers=0,
         gat_heads=4,
         relation_dim=None,
+        relation_geo_dim=None,
         dropout=0.0,
         graph_gate_init=-5.0,
         use_graph_adapter=False,
@@ -250,6 +313,7 @@ class CompatiblePositionNet(nn.Module):
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.relation_dim = relation_dim
+        self.relation_geo_dim = relation_geo_dim
         self.use_graph_adapter = use_graph_adapter
         self.graph_mode = graph_mode
         self.edge_dropout = edge_dropout
@@ -267,12 +331,19 @@ class CompatiblePositionNet(nn.Module):
         layer_cls = SpatialRelationGATLayer if graph_mode == "spatial" else SceneGraphGATLayer
         if graph_mode == "spatial":
             self.gat_layers = nn.ModuleList([
-                layer_cls(out_dim, self.position_dim, edge_dim=relation_dim, heads=gat_heads, dropout=dropout)
+                layer_cls(
+                    out_dim,
+                    self.position_dim,
+                    edge_dim=relation_dim,
+                    geo_dim=relation_geo_dim,
+                    heads=gat_heads,
+                    dropout=dropout,
+                )
                 for _ in range(gat_layers)
             ])
         else:
             self.gat_layers = nn.ModuleList([
-                layer_cls(out_dim, edge_dim=relation_dim, heads=gat_heads, dropout=dropout)
+                layer_cls(out_dim, edge_dim=relation_dim, geo_dim=relation_geo_dim, heads=gat_heads, dropout=dropout)
                 for _ in range(gat_layers)
             ])
         self.graph_gate = nn.Parameter(torch.tensor(float(graph_gate_init))) if gat_layers > 0 else None
@@ -287,7 +358,16 @@ class CompatiblePositionNet(nn.Module):
         self.null_positive_feature = nn.Parameter(torch.zeros([in_dim]))
         self.null_position_feature = nn.Parameter(torch.zeros([self.position_dim]))
 
-    def forward(self, boxes, masks, positive_embeddings, relation_edges=None, relation_embeddings=None, relation_masks=None):
+    def forward(
+        self,
+        boxes,
+        masks,
+        positive_embeddings,
+        relation_edges=None,
+        relation_embeddings=None,
+        relation_masks=None,
+        relation_geo_features=None,
+    ):
         bsz, num_nodes, _ = boxes.shape
         masks = masks.to(dtype=positive_embeddings.dtype)
         mask_3d = masks.unsqueeze(-1)
@@ -304,9 +384,23 @@ class CompatiblePositionNet(nn.Module):
         x = x_base
         for layer in self.gat_layers:
             if self.graph_mode == "spatial":
-                x = x + layer(xyxy_embedding, masks, relation_edges=relation_edges, relation_embeddings=relation_embeddings, relation_masks=relation_masks)
+                x = x + layer(
+                    xyxy_embedding,
+                    masks,
+                    relation_edges=relation_edges,
+                    relation_embeddings=relation_embeddings,
+                    relation_masks=relation_masks,
+                    relation_geo_features=relation_geo_features,
+                )
             else:
-                x = layer(x, masks, relation_edges=relation_edges, relation_embeddings=relation_embeddings, relation_masks=relation_masks)
+                x = layer(
+                    x,
+                    masks,
+                    relation_edges=relation_edges,
+                    relation_embeddings=relation_embeddings,
+                    relation_masks=relation_masks,
+                    relation_geo_features=relation_geo_features,
+                )
 
         if self.graph_gate is not None:
             gate = torch.sigmoid(self.graph_gate).to(dtype=x.dtype)

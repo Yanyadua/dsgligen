@@ -18,7 +18,7 @@ class GroundingNetInput:
         self.dtype = positive_embeddings.dtype
 
         out = {"boxes": boxes, "masks": masks, "positive_embeddings": positive_embeddings}
-        for key in ["relation_edges", "relation_embeddings", "relation_masks"]:
+        for key in ["relation_edges", "relation_embeddings", "relation_masks", "relation_geo_features"]:
             if key in batch:
                 out[key] = batch[key]
         return out
