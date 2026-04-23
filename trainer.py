@@ -492,6 +492,69 @@ class Trainer:
                 "spatial_consistency_loss": spatial_consistency_loss.item(),
             })
 
+        object_box_contrastive_loss_weight = getattr(self.config, "object_box_contrastive_loss_weight", 0.0)
+        if object_box_contrastive_loss_weight > 0:
+            temperature = getattr(self.config, "contrastive_temperature", 0.07)
+            num_negatives = int(getattr(self.config, "object_box_contrastive_negatives", 3))
+            positive_embeddings = torch.nn.functional.normalize(grounding_input["positive_embeddings"].detach(), dim=-1)
+            masks = grounding_input["masks"].to(dtype=positive_embeddings.dtype)
+            correct_tokens = torch.nn.functional.normalize(self.model.position_net(**grounding_input), dim=-1)
+            positive_score = (correct_tokens * positive_embeddings).sum(dim=-1, keepdim=True)
+
+            negative_scores = []
+            for shift in range(1, num_negatives + 1):
+                shuffled_input = dict(grounding_input)
+                shuffled_input["boxes"] = torch.roll(grounding_input["boxes"], shifts=shift, dims=1)
+                wrong_tokens = torch.nn.functional.normalize(self.model.position_net(**shuffled_input), dim=-1)
+                negative_scores.append((wrong_tokens * positive_embeddings).sum(dim=-1, keepdim=True))
+
+            logits = torch.cat([positive_score] + negative_scores, dim=-1) / temperature
+            labels = torch.zeros(logits.shape[:-1], dtype=torch.long, device=logits.device)
+            per_object_contrast = torch.nn.functional.cross_entropy(
+                logits.view(-1, logits.shape[-1]),
+                labels.view(-1),
+                reduction="none",
+            ).view_as(labels)
+            object_box_contrastive_loss = (per_object_contrast * masks).sum() / masks.sum().clamp(min=1)
+            loss = loss + object_box_contrastive_loss_weight * object_box_contrastive_loss
+            self.loss_dict.update({
+                "loss": loss.item(),
+                "object_box_contrastive_loss": object_box_contrastive_loss.item(),
+            })
+
+        relation_contrastive_loss_weight = getattr(self.config, "relation_contrastive_loss_weight", 0.0)
+        if relation_contrastive_loss_weight > 0 and "relation_edges" in grounding_input and "relation_embeddings" in grounding_input:
+            temperature = getattr(self.config, "contrastive_temperature", 0.07)
+            relation_edges = grounding_input["relation_edges"].long()
+            relation_embeddings = grounding_input["relation_embeddings"].detach()
+            relation_masks = grounding_input.get("relation_masks")
+            if relation_masks is not None and relation_edges.shape[1] > 1:
+                object_tokens = torch.nn.functional.normalize(self.model.position_net(**grounding_input), dim=-1)
+                relation_embeddings = torch.nn.functional.normalize(relation_embeddings, dim=-1)
+                node_count = object_tokens.shape[1]
+                edge_index = relation_edges.clamp(min=0, max=max(node_count - 1, 0))
+                src = edge_index[..., 0]
+                dst = edge_index[..., 1]
+                batch_idx = torch.arange(object_tokens.shape[0], device=object_tokens.device)[:, None].expand_as(src)
+                pair_tokens = torch.nn.functional.normalize(
+                    object_tokens[batch_idx, src] + object_tokens[batch_idx, dst],
+                    dim=-1,
+                )
+                logits = torch.matmul(pair_tokens, relation_embeddings.transpose(1, 2)) / temperature
+                labels = torch.arange(logits.shape[1], device=logits.device).unsqueeze(0).expand(logits.shape[0], -1)
+                per_relation_contrast = torch.nn.functional.cross_entropy(
+                    logits.view(-1, logits.shape[-1]),
+                    labels.reshape(-1),
+                    reduction="none",
+                ).view(logits.shape[:2])
+                relation_masks = relation_masks.to(dtype=per_relation_contrast.dtype)
+                relation_contrastive_loss = (per_relation_contrast * relation_masks).sum() / relation_masks.sum().clamp(min=1)
+                loss = loss + relation_contrastive_loss_weight * relation_contrastive_loss
+                self.loss_dict.update({
+                    "loss": loss.item(),
+                    "relation_contrastive_loss": relation_contrastive_loss.item(),
+                })
+
         return loss 
         
 
