@@ -22,6 +22,7 @@ DEVICE = torch.device("cuda")
 BASE_CKPT = os.environ.get("BASE_CKPT", "gligen_checkpoints/diffusion_pytorch_model.bin")
 MODEL_YAML = os.environ.get("MODEL_YAML", "configs/vg_text_box_baseline.yaml")
 DATA_YAML = os.environ.get("DATA_YAML", "configs/vg_raw_scene_graph_compatible_spatial_gat_geo.yaml")
+GROUNDING_CKPT = os.environ.get("GROUNDING_CKPT")
 OUT_DIR = Path(os.environ.get("OUT_DIR", "eval_outputs/vg_baseline_fid_5k"))
 NUM_SAMPLES = int(os.environ.get("NUM_SAMPLES", "5000"))
 START_INDEX = int(os.environ.get("START_INDEX", "0"))
@@ -87,6 +88,19 @@ def load_model():
     autoencoder.load_state_dict(base["autoencoder"])
     text_encoder.load_state_dict(base["text_encoder"], strict=False)
     diffusion.load_state_dict(base["diffusion"])
+
+    if GROUNDING_CKPT:
+        grounding_state = torch.load(GROUNDING_CKPT, map_location="cpu")
+        grounding_state = grounding_state.get("model_trainable", grounding_state.get("model", {}))
+        current_state = model.state_dict()
+        compatible_grounding = {
+            k: v
+            for k, v in grounding_state.items()
+            if k in current_state and current_state[k].shape == v.shape
+        }
+        current_state.update(compatible_grounding)
+        model.load_state_dict(current_state, strict=True)
+
     grounding_tokenizer_input = instantiate_from_config(cfg.grounding_tokenizer_input)
     model.grounding_tokenizer_input = grounding_tokenizer_input
     return model, autoencoder, text_encoder, diffusion, grounding_tokenizer_input
@@ -119,6 +133,7 @@ def main():
     with open(OUT_DIR / "meta.txt", "w") as f:
         f.write(f"MODEL_YAML={MODEL_YAML}\n")
         f.write(f"DATA_YAML={DATA_YAML}\n")
+        f.write(f"GROUNDING_CKPT={GROUNDING_CKPT}\n")
         f.write(f"NUM_SAMPLES={count}\n")
         f.write(f"START_INDEX={START_INDEX}\n")
         f.write(f"STEPS={STEPS}\n")
