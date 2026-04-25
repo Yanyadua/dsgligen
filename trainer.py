@@ -524,15 +524,31 @@ class Trainer:
 
         object_texts = normalize_collated_text_grid(batch.get("object_texts"), batch_size)
         if object_texts:
-            flat_object_texts = [text if text else "" for row in object_texts for text in row]
+            max_boxes = batch["boxes"].shape[1]
+            padded_object_texts = []
+            for row in object_texts:
+                padded_row = list(row[:max_boxes])
+                if len(padded_row) < max_boxes:
+                    padded_row.extend([""] * (max_boxes - len(padded_row)))
+                padded_object_texts.append(padded_row)
+
+            flat_object_texts = [text if text else "" for row in padded_object_texts for text in row]
             object_embeddings = self.encode_grounding_text_features(flat_object_texts)
-            batch["text_embeddings"] = object_embeddings.view(batch_size, len(object_texts[0]), -1)
+            batch["text_embeddings"] = object_embeddings.view(batch_size, max_boxes, -1)
 
         relation_texts = normalize_collated_text_grid(batch.get("relation_texts"), batch_size)
         if relation_texts:
-            flat_relation_texts = [text if text else "" for row in relation_texts for text in row]
+            max_relations = batch["relation_edges"].shape[1]
+            padded_relation_texts = []
+            for row in relation_texts:
+                padded_row = list(row[:max_relations])
+                if len(padded_row) < max_relations:
+                    padded_row.extend([""] * (max_relations - len(padded_row)))
+                padded_relation_texts.append(padded_row)
+
+            flat_relation_texts = [text if text else "" for row in padded_relation_texts for text in row]
             relation_embeddings = self.encode_grounding_text_features(flat_relation_texts)
-            batch["relation_embeddings"] = relation_embeddings.view(batch_size, len(relation_texts[0]), -1)
+            batch["relation_embeddings"] = relation_embeddings.view(batch_size, max_relations, -1)
 
 
 
