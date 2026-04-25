@@ -141,7 +141,19 @@ def sub_batch(batch, num=1):
     # choose first num in given batch 
     num = num if num > 1 else 1 
     for k in batch:
-        batch[k] = batch[k][0:num]
+        value = batch[k]
+        if isinstance(value, torch.Tensor):
+            batch[k] = value[0:num]
+        elif isinstance(value, (list, tuple)):
+            if len(value) > 0 and isinstance(value[0], (list, tuple)):
+                # PyTorch default collation can transpose fixed-length text grids
+                # into slot-major tuples like [max_box][batch]. Slice the inner
+                # batch dimension in that case so padding structure stays intact.
+                batch[k] = [list(items[0:num]) for items in value]
+            else:
+                batch[k] = value[0:num]
+        else:
+            batch[k] = value
     return batch
 
 
