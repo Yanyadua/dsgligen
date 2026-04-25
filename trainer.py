@@ -14,6 +14,7 @@ import shutil
 import torchvision
 from convert_ckpt import add_additional_channels
 import math
+import re
 from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm import tqdm
 from distributed import get_rank, synchronize, get_world_size
@@ -101,6 +102,39 @@ def normalize_collated_text_grid(value, batch_size):
     if len(value) == batch_size and all(isinstance(row, (list, tuple)) for row in value):
         return [list(row) for row in value]
     return [list(items) for items in zip(*value)]
+
+
+GEOMETRIC_RELATION_PATTERNS = {
+    "left": re.compile(r"\b(left|left of|to the left of)\b"),
+    "right": re.compile(r"\b(right|right of|to the right of)\b"),
+    "above": re.compile(r"\b(above|over|on top of)\b"),
+    "below": re.compile(r"\b(below|under|beneath)\b"),
+    "inside": re.compile(r"\b(in|inside|within)\b"),
+    "on": re.compile(r"\b(on|upon|sitting on|standing on|lying on)\b"),
+}
+
+
+def relation_text_geometry_mask(relation_texts, batch_size, device, dtype):
+    """Select relation labels whose meaning is primarily geometric."""
+    normalized = normalize_collated_text_grid(relation_texts, batch_size)
+    if not normalized:
+        return None
+    mask = torch.zeros((batch_size, len(normalized[0])), device=device, dtype=dtype)
+    for batch_idx, row in enumerate(normalized):
+        for rel_idx, text in enumerate(row):
+            text = str(text).lower()
+            if any(pattern.search(text) for pattern in GEOMETRIC_RELATION_PATTERNS.values()):
+                mask[batch_idx, rel_idx] = 1
+    return mask
+
+
+def corrupt_relation_geo_features(relation_geo_features):
+    wrong_geo = relation_geo_features.clone()
+    wrong_geo[..., 0] = -wrong_geo[..., 0]
+    wrong_geo[..., 1] = -wrong_geo[..., 1]
+    wrong_geo[..., 8], wrong_geo[..., 9] = relation_geo_features[..., 9], relation_geo_features[..., 8]
+    wrong_geo[..., 10], wrong_geo[..., 11] = relation_geo_features[..., 11], relation_geo_features[..., 10]
+    return wrong_geo
 
 
 def sub_batch(batch, num=1):
@@ -647,6 +681,66 @@ class Trainer:
                 self.loss_dict.update({
                     "loss": loss.item(),
                     "relation_contrastive_loss": relation_contrastive_loss.item(),
+                })
+
+        relation_geo_consistency_loss_weight = getattr(self.config, "relation_geo_consistency_loss_weight", 0.0)
+        has_relation_geo_inputs = (
+            "relation_edges" in grounding_input
+            and "relation_embeddings" in grounding_input
+            and "relation_geo_features" in grounding_input
+        )
+        if relation_geo_consistency_loss_weight > 0 and has_relation_geo_inputs:
+            relation_edges = grounding_input["relation_edges"].long()
+            relation_masks = grounding_input.get("relation_masks")
+            relation_embeddings = grounding_input["relation_embeddings"].detach()
+            if relation_masks is not None and relation_edges.shape[1] > 0:
+                margin = getattr(self.config, "relation_geo_consistency_margin", 0.05)
+                filter_predicates = bool(getattr(self.config, "relation_geo_consistency_filter_predicates", True))
+
+                correct_tokens = torch.nn.functional.normalize(self.model.position_net(**grounding_input), dim=-1)
+                corrupted_input = dict(grounding_input)
+                corrupted_input["relation_geo_features"] = corrupt_relation_geo_features(
+                    grounding_input["relation_geo_features"]
+                )
+                wrong_tokens = torch.nn.functional.normalize(self.model.position_net(**corrupted_input), dim=-1)
+
+                relation_embeddings = torch.nn.functional.normalize(relation_embeddings, dim=-1)
+                node_count = correct_tokens.shape[1]
+                edge_index = relation_edges.clamp(min=0, max=max(node_count - 1, 0))
+                src = edge_index[..., 0]
+                dst = edge_index[..., 1]
+                batch_idx = torch.arange(correct_tokens.shape[0], device=correct_tokens.device)[:, None].expand_as(src)
+
+                correct_pairs = torch.nn.functional.normalize(
+                    correct_tokens[batch_idx, src] + correct_tokens[batch_idx, dst],
+                    dim=-1,
+                )
+                wrong_pairs = torch.nn.functional.normalize(
+                    wrong_tokens[batch_idx, src] + wrong_tokens[batch_idx, dst],
+                    dim=-1,
+                )
+                positive_score = (correct_pairs * relation_embeddings).sum(dim=-1)
+                negative_score = (wrong_pairs * relation_embeddings).sum(dim=-1)
+                per_relation_geo = torch.relu(margin + negative_score - positive_score)
+
+                relation_masks = relation_masks.to(dtype=per_relation_geo.dtype)
+                if filter_predicates:
+                    geometry_mask = relation_text_geometry_mask(
+                        batch.get("relation_texts"),
+                        batch_size=correct_tokens.shape[0],
+                        device=per_relation_geo.device,
+                        dtype=per_relation_geo.dtype,
+                    )
+                    if geometry_mask is not None and (geometry_mask * relation_masks).sum() > 0:
+                        relation_masks = relation_masks * geometry_mask
+
+                relation_geo_consistency_loss = (
+                    per_relation_geo * relation_masks
+                ).sum() / relation_masks.sum().clamp(min=1)
+                loss = loss + relation_geo_consistency_loss_weight * relation_geo_consistency_loss
+                self.loss_dict.update({
+                    "loss": loss.item(),
+                    "relation_geo_consistency_loss": relation_geo_consistency_loss.item(),
                 })
 
         return loss 
