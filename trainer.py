@@ -313,6 +313,7 @@ class Trainer:
                         "position_net.gat_layers" in name
                         or "position_net.graph_gate" in name
                         or "position_net.graph_adapter" in name
+                        or "position_net.relation_geo_predictor" in name
                     )
                     if is_graph_adapter_param:
                         params.append(p)
@@ -425,7 +426,7 @@ class Trainer:
         if position_net is None:
             return []
 
-        graph_prefixes = ("gat_layers.", "graph_gate", "graph_adapter.")
+        graph_prefixes = ("gat_layers.", "graph_gate", "graph_adapter.", "relation_geo_predictor.")
         named_params = []
         for name, param in position_net.named_parameters():
             if any(name.startswith(prefix) for prefix in graph_prefixes):
@@ -741,6 +742,53 @@ class Trainer:
                 self.loss_dict.update({
                     "loss": loss.item(),
                     "relation_geo_consistency_loss": relation_geo_consistency_loss.item(),
+                })
+
+        relation_geo_prediction_loss_weight = getattr(self.config, "relation_geo_prediction_loss_weight", 0.0)
+        position_net = self.model.position_net
+        has_relation_geo_predictor = (
+            hasattr(position_net, "predict_relation_geo")
+            and getattr(position_net, "relation_geo_predictor", None) is not None
+        )
+        if relation_geo_prediction_loss_weight > 0 and has_relation_geo_inputs and has_relation_geo_predictor:
+            relation_edges = grounding_input["relation_edges"].long()
+            relation_masks = grounding_input.get("relation_masks")
+            relation_embeddings = grounding_input["relation_embeddings"].detach()
+            relation_geo_features = grounding_input["relation_geo_features"].detach()
+            if relation_masks is not None and relation_edges.shape[1] > 0:
+                object_tokens = self.model.position_net(**grounding_input)
+                pred_geo = self.model.position_net.predict_relation_geo(
+                    object_tokens,
+                    relation_edges,
+                    relation_embeddings=relation_embeddings,
+                )
+                target_geo = relation_geo_features.to(dtype=pred_geo.dtype)
+                beta = getattr(self.config, "relation_geo_prediction_beta", 0.1)
+                per_relation_pred = torch.nn.functional.smooth_l1_loss(
+                    pred_geo,
+                    target_geo,
+                    reduction="none",
+                    beta=beta,
+                ).mean(dim=-1)
+
+                relation_masks = relation_masks.to(dtype=per_relation_pred.dtype)
+                if bool(getattr(self.config, "relation_geo_prediction_filter_predicates", True)):
+                    geometry_mask = relation_text_geometry_mask(
+                        batch.get("relation_texts"),
+                        batch_size=object_tokens.shape[0],
+                        device=per_relation_pred.device,
+                        dtype=per_relation_pred.dtype,
+                    )
+                    if geometry_mask is not None and (geometry_mask * relation_masks).sum() > 0:
+                        relation_masks = relation_masks * geometry_mask
+
+                relation_geo_prediction_loss = (
+                    per_relation_pred * relation_masks
+                ).sum() / relation_masks.sum().clamp(min=1)
+                loss = loss + relation_geo_prediction_loss_weight * relation_geo_prediction_loss
+                self.loss_dict.update({
+                    "loss": loss.item(),
+                    "relation_geo_prediction_loss": relation_geo_prediction_loss.item(),
                 })
 
         return loss 

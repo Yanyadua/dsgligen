@@ -6,6 +6,20 @@ import torch.nn as nn
 from ldm.modules.diffusionmodules.util import FourierEmbedder
 
 
+def build_relation_pair_features(object_tokens, relation_edges, relation_embeddings=None):
+    bsz, num_nodes, _ = object_tokens.shape
+    edge_index = relation_edges.long().clamp(min=0, max=max(num_nodes - 1, 0))
+    src = edge_index[..., 0]
+    dst = edge_index[..., 1]
+    batch_idx = torch.arange(bsz, device=object_tokens.device)[:, None].expand_as(src)
+    src_tokens = object_tokens[batch_idx, src]
+    dst_tokens = object_tokens[batch_idx, dst]
+    pieces = [src_tokens, dst_tokens, src_tokens - dst_tokens]
+    if relation_embeddings is not None:
+        pieces.append(relation_embeddings.to(device=object_tokens.device, dtype=object_tokens.dtype))
+    return torch.cat(pieces, dim=-1)
+
+
 class SceneGraphGATLayer(nn.Module):
     """A compact edge-aware GAT layer for object-level scene graph tokens."""
 
@@ -237,6 +251,17 @@ class PositionNet(nn.Module):
             nn.SiLU(),
             nn.Linear(adapter_hidden_dim, hidden_dim),
         ) if use_graph_adapter and gat_layers > 0 else None
+        if relation_geo_dim is not None:
+            predictor_in_dim = out_dim * 3 + (relation_dim or 0)
+            predictor_hidden_dim = max(128, out_dim // 2)
+            self.relation_geo_predictor = nn.Sequential(
+                nn.LayerNorm(predictor_in_dim),
+                nn.Linear(predictor_in_dim, predictor_hidden_dim),
+                nn.SiLU(),
+                nn.Linear(predictor_hidden_dim, relation_geo_dim),
+            )
+        else:
+            self.relation_geo_predictor = None
         self.out = nn.Sequential(nn.LayerNorm(hidden_dim), nn.Linear(hidden_dim, out_dim))
 
         self.null_positive_feature = nn.Parameter(torch.zeros([in_dim]))
@@ -282,6 +307,17 @@ class PositionNet(nn.Module):
         objs = self.out(x)
         assert objs.shape == torch.Size([bsz, num_nodes, self.out_dim])
         return objs
+
+    def predict_relation_geo(self, object_tokens, relation_edges, relation_embeddings=None):
+        assert self.relation_geo_predictor is not None, "relation_geo_predictor is not enabled"
+        if self.relation_dim is None:
+            relation_embeddings = None
+        elif relation_embeddings is None:
+            relation_embeddings = object_tokens.new_zeros(
+                object_tokens.shape[0], relation_edges.shape[1], self.relation_dim
+            )
+        pair_features = build_relation_pair_features(object_tokens, relation_edges, relation_embeddings)
+        return self.relation_geo_predictor(pair_features)
 
 
 class CompatiblePositionNet(nn.Module):
@@ -354,6 +390,17 @@ class CompatiblePositionNet(nn.Module):
             nn.SiLU(),
             nn.Linear(adapter_hidden_dim, out_dim),
         ) if use_graph_adapter and gat_layers > 0 else None
+        if relation_geo_dim is not None:
+            predictor_in_dim = out_dim * 3 + (relation_dim or 0)
+            predictor_hidden_dim = max(128, out_dim // 2)
+            self.relation_geo_predictor = nn.Sequential(
+                nn.LayerNorm(predictor_in_dim),
+                nn.Linear(predictor_in_dim, predictor_hidden_dim),
+                nn.SiLU(),
+                nn.Linear(predictor_hidden_dim, relation_geo_dim),
+            )
+        else:
+            self.relation_geo_predictor = None
 
         self.null_positive_feature = nn.Parameter(torch.zeros([in_dim]))
         self.null_position_feature = nn.Parameter(torch.zeros([self.position_dim]))
@@ -411,3 +458,14 @@ class CompatiblePositionNet(nn.Module):
 
         assert x.shape == torch.Size([bsz, num_nodes, self.out_dim])
         return x
+
+    def predict_relation_geo(self, object_tokens, relation_edges, relation_embeddings=None):
+        assert self.relation_geo_predictor is not None, "relation_geo_predictor is not enabled"
+        if self.relation_dim is None:
+            relation_embeddings = None
+        elif relation_embeddings is None:
+            relation_embeddings = object_tokens.new_zeros(
+                object_tokens.shape[0], relation_edges.shape[1], self.relation_dim
+            )
+        pair_features = build_relation_pair_features(object_tokens, relation_edges, relation_embeddings)
+        return self.relation_geo_predictor(pair_features)
