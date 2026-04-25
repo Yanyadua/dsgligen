@@ -32,11 +32,13 @@ RAW_BASE_GROUNDING_CKPT = os.environ.get("RAW_BASE_GROUNDING_CKPT")
 OUT = Path(os.environ.get("OUT_DIR", "eval_outputs/raw_vg_compare"))
 OUT.mkdir(parents=True, exist_ok=True)
 
-EXPS = [
-    ("baseline", "configs/vg_text_box_baseline.yaml", "OUTPUT_LONG_FIXED/vg_text_box_baseline_5k/tag00/checkpoint_00005000.pth", None),
-    ("mlp", "configs/vg_scene_graph_mlp.yaml", "OUTPUT_LONG_FIXED/vg_scene_graph_mlp_5k/tag00/checkpoint_00005000.pth", None),
-    (RAW_LABEL, RAW_YAML, RAW_CKPT, RAW_BASE_GROUNDING_CKPT),
-]
+EXPS = []
+if os.environ.get("INCLUDE_DEFAULT_EXPS", "1") != "0":
+    EXPS.extend([
+        ("baseline", "configs/vg_text_box_baseline.yaml", "OUTPUT_LONG_FIXED/vg_text_box_baseline_5k/tag00/checkpoint_00005000.pth", None),
+        ("mlp", "configs/vg_scene_graph_mlp.yaml", "OUTPUT_LONG_FIXED/vg_scene_graph_mlp_5k/tag00/checkpoint_00005000.pth", None),
+    ])
+EXPS.append((RAW_LABEL, RAW_YAML, RAW_CKPT, RAW_BASE_GROUNDING_CKPT))
 
 SELECTED_INDICES = [int(x) for x in os.environ.get("SAMPLE_INDICES", "0,1,2,3").split(",")]
 STEPS = int(os.environ.get("STEPS", "20"))
