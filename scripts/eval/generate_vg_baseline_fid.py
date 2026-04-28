@@ -20,9 +20,13 @@ from trainer import batch_to_device
 
 DEVICE = torch.device("cuda")
 BASE_CKPT = os.environ.get("BASE_CKPT", "gligen_checkpoints/diffusion_pytorch_model.bin")
-MODEL_YAML = os.environ.get("MODEL_YAML", "configs/vg_text_box_baseline.yaml")
 DATA_YAML = os.environ.get("DATA_YAML", "configs/vg_raw_scene_graph_compatible_spatial_gat_geo.yaml")
 GROUNDING_CKPT = os.environ.get("GROUNDING_CKPT")
+DEFAULT_BASELINE_MODEL_YAML = "configs/vg_text_box_baseline.yaml"
+MODEL_YAML = os.environ.get(
+    "MODEL_YAML",
+    DATA_YAML if GROUNDING_CKPT else DEFAULT_BASELINE_MODEL_YAML,
+)
 OUT_DIR = Path(os.environ.get("OUT_DIR", "eval_outputs/vg_baseline_fid_5k"))
 NUM_SAMPLES = int(os.environ.get("NUM_SAMPLES", "5000"))
 START_INDEX = int(os.environ.get("START_INDEX", "0"))
@@ -98,6 +102,19 @@ def load_model():
             for k, v in grounding_state.items()
             if k in current_state and current_state[k].shape == v.shape
         }
+        skipped_grounding = sorted(set(grounding_state.keys()) - set(compatible_grounding.keys()))
+        print(
+            "GROUNDING_LOAD",
+            f"ckpt={GROUNDING_CKPT}",
+            f"loaded={len(compatible_grounding)}",
+            f"skipped={len(skipped_grounding)}",
+            flush=True,
+        )
+        if len(compatible_grounding) == 0:
+            raise RuntimeError(
+                "GROUNDING_CKPT was provided but no compatible parameters were loaded. "
+                f"MODEL_YAML={MODEL_YAML} likely does not match the checkpoint architecture."
+            )
         current_state.update(compatible_grounding)
         model.load_state_dict(current_state, strict=True)
 
