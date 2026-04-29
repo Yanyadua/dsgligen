@@ -31,7 +31,7 @@ model:
         relation_dim: 768
         relation_geo_dim: 12
         relation_visual_dim: 64
-        relation_predicate_vocab_size: 46
+        relation_predicate_vocab_size: 66
         graph_visual_dim: 64
         dropout: 0.0
         graph_gate_init: -2.0

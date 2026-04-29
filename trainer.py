@@ -1042,27 +1042,33 @@ class Trainer:
                     )
                     masked_labels = relation_label_ids.long()[masked_edges]
                     masked_logits = relation_logits[masked_edges]
-                    masked_relation_cls_loss = torch.nn.functional.cross_entropy(
-                        masked_logits,
-                        masked_labels,
-                    )
-                    masked_geo_target = relation_geo_features[masked_edges].to(dtype=relation_geo_pred.dtype)
-                    beta = getattr(self.config, "relation_geo_prediction_beta", 0.1)
-                    masked_relation_geo_loss = torch.nn.functional.smooth_l1_loss(
-                        relation_geo_pred[masked_edges],
-                        masked_geo_target,
-                        reduction="mean",
-                        beta=beta,
-                    )
-                    masked_relation_geo_weight = float(getattr(self.config, "masked_relation_geo_weight", 1.0))
-                    masked_relation_loss = masked_relation_cls_loss + masked_relation_geo_weight * masked_relation_geo_loss
-                    loss = loss + masked_relation_loss_weight * masked_relation_loss
-                    self.loss_dict.update({
-                        "loss": loss.item(),
-                        "masked_relation_cls_loss": masked_relation_cls_loss.item(),
-                        "masked_relation_geo_loss": masked_relation_geo_loss.item(),
-                        "masked_relation_loss": masked_relation_loss.item(),
-                    })
+                    valid_label_mask = (masked_labels >= 0) & (masked_labels < masked_logits.shape[-1])
+                    if valid_label_mask.any():
+                        masked_labels = masked_labels[valid_label_mask]
+                        masked_logits = masked_logits[valid_label_mask]
+                        masked_relation_cls_loss = torch.nn.functional.cross_entropy(
+                            masked_logits,
+                            masked_labels,
+                        )
+                        masked_geo_target = relation_geo_features[masked_edges][valid_label_mask].to(
+                            dtype=relation_geo_pred.dtype
+                        )
+                        beta = getattr(self.config, "relation_geo_prediction_beta", 0.1)
+                        masked_relation_geo_loss = torch.nn.functional.smooth_l1_loss(
+                            relation_geo_pred[masked_edges][valid_label_mask],
+                            masked_geo_target,
+                            reduction="mean",
+                            beta=beta,
+                        )
+                        masked_relation_geo_weight = float(getattr(self.config, "masked_relation_geo_weight", 1.0))
+                        masked_relation_loss = masked_relation_cls_loss + masked_relation_geo_weight * masked_relation_geo_loss
+                        loss = loss + masked_relation_loss_weight * masked_relation_loss
+                        self.loss_dict.update({
+                            "loss": loss.item(),
+                            "masked_relation_cls_loss": masked_relation_cls_loss.item(),
+                            "masked_relation_geo_loss": masked_relation_geo_loss.item(),
+                            "masked_relation_loss": masked_relation_loss.item(),
+                        })
 
         return loss 
         
