@@ -137,6 +137,60 @@ def corrupt_relation_geo_features(relation_geo_features):
     return wrong_geo
 
 
+def build_relation_union_boxes(object_boxes, relation_edges):
+    batch_size, num_nodes, _ = object_boxes.shape
+    edge_index = relation_edges.long().clamp(min=0, max=max(num_nodes - 1, 0))
+    src = edge_index[..., 0]
+    dst = edge_index[..., 1]
+    batch_idx = torch.arange(batch_size, device=object_boxes.device)[:, None].expand_as(src)
+    src_boxes = object_boxes[batch_idx, src]
+    dst_boxes = object_boxes[batch_idx, dst]
+    x1 = torch.minimum(src_boxes[..., 0], dst_boxes[..., 0])
+    y1 = torch.minimum(src_boxes[..., 1], dst_boxes[..., 1])
+    x2 = torch.maximum(src_boxes[..., 2], dst_boxes[..., 2])
+    y2 = torch.maximum(src_boxes[..., 3], dst_boxes[..., 3])
+    return torch.stack([x1, y1, x2, y2], dim=-1)
+
+
+def extract_relation_union_latent_features(latents, object_boxes, relation_edges, relation_masks, output_size):
+    valid_mask = relation_masks > 0
+    if valid_mask.sum() == 0:
+        return None, valid_mask
+
+    union_boxes = build_relation_union_boxes(object_boxes, relation_edges)
+    batch_indices = torch.arange(latents.shape[0], device=latents.device)[:, None].expand_as(valid_mask)
+    coords = union_boxes[valid_mask].to(dtype=latents.dtype).clone()
+    height, width = latents.shape[-2:]
+    eps_x = 1.0 / max(width, 1)
+    eps_y = 1.0 / max(height, 1)
+
+    coords[:, 0] = coords[:, 0].clamp(min=0.0, max=1.0 - eps_x)
+    coords[:, 1] = coords[:, 1].clamp(min=0.0, max=1.0 - eps_y)
+    coords[:, 2] = torch.maximum(coords[:, 2].clamp(min=0.0, max=1.0), coords[:, 0] + eps_x)
+    coords[:, 3] = torch.maximum(coords[:, 3].clamp(min=0.0, max=1.0), coords[:, 1] + eps_y)
+
+    coords[:, 0] *= width
+    coords[:, 2] *= width
+    coords[:, 1] *= height
+    coords[:, 3] *= height
+
+    rois = torch.cat(
+        [
+            batch_indices[valid_mask].to(dtype=latents.dtype).unsqueeze(-1),
+            coords,
+        ],
+        dim=-1,
+    )
+    pooled = torchvision.ops.roi_align(
+        latents.detach(),
+        rois,
+        output_size=(output_size, output_size),
+        spatial_scale=1.0,
+        aligned=True,
+    )
+    return pooled.flatten(start_dim=1), valid_mask
+
+
 def sub_batch(batch, num=1):
     # choose first num in given batch 
     num = num if num > 1 else 1 
@@ -794,6 +848,10 @@ class Trainer:
             hasattr(position_net, "predict_relation_geo")
             and getattr(position_net, "relation_geo_predictor", None) is not None
         )
+        has_relation_visual_predictor = (
+            hasattr(position_net, "predict_relation_visual")
+            and getattr(position_net, "relation_visual_predictor", None) is not None
+        )
         if relation_geo_prediction_loss_weight > 0 and has_relation_geo_inputs and has_relation_geo_predictor:
             relation_edges = grounding_input["relation_edges"].long()
             relation_masks = grounding_input.get("relation_masks")
@@ -834,6 +892,58 @@ class Trainer:
                     "loss": loss.item(),
                     "relation_geo_prediction_loss": relation_geo_prediction_loss.item(),
                 })
+
+        relation_visual_align_loss_weight = getattr(self.config, "relation_visual_align_loss_weight", 0.0)
+        if relation_visual_align_loss_weight > 0 and has_relation_geo_inputs and has_relation_visual_predictor:
+            relation_edges = grounding_input["relation_edges"].long()
+            relation_masks = grounding_input.get("relation_masks")
+            relation_embeddings = grounding_input["relation_embeddings"].detach()
+            if relation_masks is not None and relation_edges.shape[1] > 0:
+                output_size = int(getattr(self.config, "relation_visual_align_output_size", 4))
+                target_visual, valid_mask = extract_relation_union_latent_features(
+                    x_start,
+                    grounding_input["boxes"],
+                    relation_edges,
+                    relation_masks,
+                    output_size=output_size,
+                )
+                expected_dim = getattr(position_net, "relation_visual_dim", None)
+                if (
+                    target_visual is not None
+                    and expected_dim is not None
+                    and target_visual.shape[-1] == expected_dim
+                ):
+                    object_tokens = self.model.position_net(**grounding_input)
+                    pred_visual = self.model.position_net.predict_relation_visual(
+                        object_tokens,
+                        relation_edges,
+                        relation_embeddings=relation_embeddings,
+                    )
+                    pred_visual = pred_visual[valid_mask]
+                    pred_visual = torch.nn.functional.normalize(pred_visual, dim=-1)
+                    target_visual = torch.nn.functional.normalize(target_visual, dim=-1)
+                    per_relation_visual = 1 - (pred_visual * target_visual).sum(dim=-1)
+
+                    relation_weights = relation_masks[valid_mask].to(dtype=per_relation_visual.dtype)
+                    if bool(getattr(self.config, "relation_visual_align_filter_predicates", False)):
+                        relation_filter = relation_text_geometry_mask(
+                            batch.get("relation_texts"),
+                            batch_size=object_tokens.shape[0],
+                            device=per_relation_visual.device,
+                            dtype=per_relation_visual.dtype,
+                        )
+                        if relation_filter is not None:
+                            relation_weights = relation_weights * relation_filter[valid_mask]
+
+                    if relation_weights.sum() > 0:
+                        relation_visual_align_loss = (
+                            per_relation_visual * relation_weights
+                        ).sum() / relation_weights.sum().clamp(min=1)
+                        loss = loss + relation_visual_align_loss_weight * relation_visual_align_loss
+                        self.loss_dict.update({
+                            "loss": loss.item(),
+                            "relation_visual_align_loss": relation_visual_align_loss.item(),
+                        })
 
         return loss 
         
