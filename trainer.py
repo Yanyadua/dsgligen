@@ -403,7 +403,23 @@ class Trainer:
         self.starting_iter = 0  
         if checkpoint is not None:
             checkpoint = torch.load(checkpoint, map_location="cpu")
-            self.model.load_state_dict(checkpoint["model"])
+            if "model" in checkpoint:
+                self.model.load_state_dict(checkpoint["model"])
+            elif "model_trainable" in checkpoint:
+                current_state = self.model.state_dict()
+                compatible_trainable = {
+                    k: v for k, v in checkpoint["model_trainable"].items()
+                    if k in current_state and current_state[k].shape == v.shape
+                }
+                current_state.update(compatible_trainable)
+                self.model.load_state_dict(current_state, strict=True)
+                if get_rank() == 0:
+                    skipped = len(checkpoint["model_trainable"]) - len(compatible_trainable)
+                    print(
+                        f"auto-resumed {len(compatible_trainable)} trainable tensors from lightweight checkpoint, skipped {skipped}"
+                    )
+            else:
+                raise KeyError("checkpoint must contain either 'model' or 'model_trainable'")
             if config.enable_ema:
                 self.ema.load_state_dict(checkpoint["ema"])
             self.opt.load_state_dict(checkpoint["opt"])
