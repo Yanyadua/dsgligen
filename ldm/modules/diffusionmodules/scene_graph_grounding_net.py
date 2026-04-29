@@ -211,6 +211,7 @@ class PositionNet(nn.Module):
         gat_heads=4,
         relation_dim=None,
         relation_geo_dim=None,
+        relation_visual_dim=None,
         dropout=0.0,
         graph_gate_init=-4.0,
         use_graph_adapter=False,
@@ -222,6 +223,7 @@ class PositionNet(nn.Module):
         self.hidden_dim = hidden_dim
         self.relation_dim = relation_dim
         self.relation_geo_dim = relation_geo_dim
+        self.relation_visual_dim = relation_visual_dim
         self.use_graph_adapter = use_graph_adapter
 
         self.fourier_embedder = FourierEmbedder(num_freqs=fourier_freqs)
@@ -262,6 +264,17 @@ class PositionNet(nn.Module):
             )
         else:
             self.relation_geo_predictor = None
+        if relation_visual_dim is not None:
+            predictor_in_dim = out_dim * 3 + (relation_dim or 0)
+            predictor_hidden_dim = max(128, out_dim // 2)
+            self.relation_visual_predictor = nn.Sequential(
+                nn.LayerNorm(predictor_in_dim),
+                nn.Linear(predictor_in_dim, predictor_hidden_dim),
+                nn.SiLU(),
+                nn.Linear(predictor_hidden_dim, relation_visual_dim),
+            )
+        else:
+            self.relation_visual_predictor = None
         self.out = nn.Sequential(nn.LayerNorm(hidden_dim), nn.Linear(hidden_dim, out_dim))
 
         self.null_positive_feature = nn.Parameter(torch.zeros([in_dim]))
@@ -319,6 +332,17 @@ class PositionNet(nn.Module):
         pair_features = build_relation_pair_features(object_tokens, relation_edges, relation_embeddings)
         return self.relation_geo_predictor(pair_features)
 
+    def predict_relation_visual(self, object_tokens, relation_edges, relation_embeddings=None):
+        assert self.relation_visual_predictor is not None, "relation_visual_predictor is not enabled"
+        if self.relation_dim is None:
+            relation_embeddings = None
+        elif relation_embeddings is None:
+            relation_embeddings = object_tokens.new_zeros(
+                object_tokens.shape[0], relation_edges.shape[1], self.relation_dim
+            )
+        pair_features = build_relation_pair_features(object_tokens, relation_edges, relation_embeddings)
+        return self.relation_visual_predictor(pair_features)
+
 
 class CompatiblePositionNet(nn.Module):
     """GLIGEN-compatible grounding encoder with optional scene-graph residuals.
@@ -338,6 +362,7 @@ class CompatiblePositionNet(nn.Module):
         gat_heads=4,
         relation_dim=None,
         relation_geo_dim=None,
+        relation_visual_dim=None,
         dropout=0.0,
         graph_gate_init=-5.0,
         use_graph_adapter=False,
@@ -350,6 +375,7 @@ class CompatiblePositionNet(nn.Module):
         self.out_dim = out_dim
         self.relation_dim = relation_dim
         self.relation_geo_dim = relation_geo_dim
+        self.relation_visual_dim = relation_visual_dim
         self.use_graph_adapter = use_graph_adapter
         self.graph_mode = graph_mode
         self.edge_dropout = edge_dropout
@@ -401,6 +427,17 @@ class CompatiblePositionNet(nn.Module):
             )
         else:
             self.relation_geo_predictor = None
+        if relation_visual_dim is not None:
+            predictor_in_dim = out_dim * 3 + (relation_dim or 0)
+            predictor_hidden_dim = max(128, out_dim // 2)
+            self.relation_visual_predictor = nn.Sequential(
+                nn.LayerNorm(predictor_in_dim),
+                nn.Linear(predictor_in_dim, predictor_hidden_dim),
+                nn.SiLU(),
+                nn.Linear(predictor_hidden_dim, relation_visual_dim),
+            )
+        else:
+            self.relation_visual_predictor = None
 
         self.null_positive_feature = nn.Parameter(torch.zeros([in_dim]))
         self.null_position_feature = nn.Parameter(torch.zeros([self.position_dim]))
@@ -469,3 +506,14 @@ class CompatiblePositionNet(nn.Module):
             )
         pair_features = build_relation_pair_features(object_tokens, relation_edges, relation_embeddings)
         return self.relation_geo_predictor(pair_features)
+
+    def predict_relation_visual(self, object_tokens, relation_edges, relation_embeddings=None):
+        assert self.relation_visual_predictor is not None, "relation_visual_predictor is not enabled"
+        if self.relation_dim is None:
+            relation_embeddings = None
+        elif relation_embeddings is None:
+            relation_embeddings = object_tokens.new_zeros(
+                object_tokens.shape[0], relation_edges.shape[1], self.relation_dim
+            )
+        pair_features = build_relation_pair_features(object_tokens, relation_edges, relation_embeddings)
+        return self.relation_visual_predictor(pair_features)
