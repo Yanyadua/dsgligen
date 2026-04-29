@@ -319,6 +319,8 @@ class PositionNet(nn.Module):
         relation_embeddings=None,
         relation_masks=None,
         relation_geo_features=None,
+        relation_label_ids=None,
+        object_label_ids=None,
     ):
         bsz, num_nodes, _ = boxes.shape
         masks = masks.to(dtype=positive_embeddings.dtype)
@@ -521,6 +523,8 @@ class CompatiblePositionNet(nn.Module):
         relation_embeddings=None,
         relation_masks=None,
         relation_geo_features=None,
+        relation_label_ids=None,
+        object_label_ids=None,
     ):
         bsz, num_nodes, _ = boxes.shape
         masks = masks.to(dtype=positive_embeddings.dtype)
