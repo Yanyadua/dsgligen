@@ -20,6 +20,12 @@ def build_relation_pair_features(object_tokens, relation_edges, relation_embeddi
     return torch.cat(pieces, dim=-1)
 
 
+def masked_mean_pool(tokens, masks):
+    weights = masks.to(dtype=tokens.dtype).unsqueeze(-1)
+    pooled = (tokens * weights).sum(dim=1) / weights.sum(dim=1).clamp(min=1.0)
+    return pooled
+
+
 class SceneGraphGATLayer(nn.Module):
     """A compact edge-aware GAT layer for object-level scene graph tokens."""
 
@@ -212,6 +218,8 @@ class PositionNet(nn.Module):
         relation_dim=None,
         relation_geo_dim=None,
         relation_visual_dim=None,
+        relation_predicate_vocab_size=None,
+        graph_visual_dim=None,
         dropout=0.0,
         graph_gate_init=-4.0,
         use_graph_adapter=False,
@@ -224,6 +232,8 @@ class PositionNet(nn.Module):
         self.relation_dim = relation_dim
         self.relation_geo_dim = relation_geo_dim
         self.relation_visual_dim = relation_visual_dim
+        self.relation_predicate_vocab_size = relation_predicate_vocab_size
+        self.graph_visual_dim = graph_visual_dim
         self.use_graph_adapter = use_graph_adapter
 
         self.fourier_embedder = FourierEmbedder(num_freqs=fourier_freqs)
@@ -275,6 +285,26 @@ class PositionNet(nn.Module):
             )
         else:
             self.relation_visual_predictor = None
+        if relation_predicate_vocab_size is not None:
+            predictor_in_dim = out_dim * 3 + (relation_dim or 0)
+            predictor_hidden_dim = max(128, out_dim // 2)
+            self.relation_predicate_predictor = nn.Sequential(
+                nn.LayerNorm(predictor_in_dim),
+                nn.Linear(predictor_in_dim, predictor_hidden_dim),
+                nn.SiLU(),
+                nn.Linear(predictor_hidden_dim, relation_predicate_vocab_size),
+            )
+        else:
+            self.relation_predicate_predictor = None
+        if graph_visual_dim is not None:
+            self.graph_visual_projector = nn.Sequential(
+                nn.LayerNorm(out_dim),
+                nn.Linear(out_dim, out_dim),
+                nn.SiLU(),
+                nn.Linear(out_dim, graph_visual_dim),
+            )
+        else:
+            self.graph_visual_projector = None
         self.out = nn.Sequential(nn.LayerNorm(hidden_dim), nn.Linear(hidden_dim, out_dim))
 
         self.null_positive_feature = nn.Parameter(torch.zeros([in_dim]))
@@ -343,6 +373,22 @@ class PositionNet(nn.Module):
         pair_features = build_relation_pair_features(object_tokens, relation_edges, relation_embeddings)
         return self.relation_visual_predictor(pair_features)
 
+    def predict_relation_logits(self, object_tokens, relation_edges, relation_embeddings=None):
+        assert self.relation_predicate_predictor is not None, "relation_predicate_predictor is not enabled"
+        if self.relation_dim is None:
+            relation_embeddings = None
+        elif relation_embeddings is None:
+            relation_embeddings = object_tokens.new_zeros(
+                object_tokens.shape[0], relation_edges.shape[1], self.relation_dim
+            )
+        pair_features = build_relation_pair_features(object_tokens, relation_edges, relation_embeddings)
+        return self.relation_predicate_predictor(pair_features)
+
+    def predict_graph_visual(self, object_tokens, masks):
+        assert self.graph_visual_projector is not None, "graph_visual_projector is not enabled"
+        pooled = masked_mean_pool(object_tokens, masks)
+        return self.graph_visual_projector(pooled)
+
 
 class CompatiblePositionNet(nn.Module):
     """GLIGEN-compatible grounding encoder with optional scene-graph residuals.
@@ -363,6 +409,8 @@ class CompatiblePositionNet(nn.Module):
         relation_dim=None,
         relation_geo_dim=None,
         relation_visual_dim=None,
+        relation_predicate_vocab_size=None,
+        graph_visual_dim=None,
         dropout=0.0,
         graph_gate_init=-5.0,
         use_graph_adapter=False,
@@ -376,6 +424,8 @@ class CompatiblePositionNet(nn.Module):
         self.relation_dim = relation_dim
         self.relation_geo_dim = relation_geo_dim
         self.relation_visual_dim = relation_visual_dim
+        self.relation_predicate_vocab_size = relation_predicate_vocab_size
+        self.graph_visual_dim = graph_visual_dim
         self.use_graph_adapter = use_graph_adapter
         self.graph_mode = graph_mode
         self.edge_dropout = edge_dropout
@@ -438,6 +488,26 @@ class CompatiblePositionNet(nn.Module):
             )
         else:
             self.relation_visual_predictor = None
+        if relation_predicate_vocab_size is not None:
+            predictor_in_dim = out_dim * 3 + (relation_dim or 0)
+            predictor_hidden_dim = max(128, out_dim // 2)
+            self.relation_predicate_predictor = nn.Sequential(
+                nn.LayerNorm(predictor_in_dim),
+                nn.Linear(predictor_in_dim, predictor_hidden_dim),
+                nn.SiLU(),
+                nn.Linear(predictor_hidden_dim, relation_predicate_vocab_size),
+            )
+        else:
+            self.relation_predicate_predictor = None
+        if graph_visual_dim is not None:
+            self.graph_visual_projector = nn.Sequential(
+                nn.LayerNorm(out_dim),
+                nn.Linear(out_dim, out_dim),
+                nn.SiLU(),
+                nn.Linear(out_dim, graph_visual_dim),
+            )
+        else:
+            self.graph_visual_projector = None
 
         self.null_positive_feature = nn.Parameter(torch.zeros([in_dim]))
         self.null_position_feature = nn.Parameter(torch.zeros([self.position_dim]))
@@ -517,3 +587,19 @@ class CompatiblePositionNet(nn.Module):
             )
         pair_features = build_relation_pair_features(object_tokens, relation_edges, relation_embeddings)
         return self.relation_visual_predictor(pair_features)
+
+    def predict_relation_logits(self, object_tokens, relation_edges, relation_embeddings=None):
+        assert self.relation_predicate_predictor is not None, "relation_predicate_predictor is not enabled"
+        if self.relation_dim is None:
+            relation_embeddings = None
+        elif relation_embeddings is None:
+            relation_embeddings = object_tokens.new_zeros(
+                object_tokens.shape[0], relation_edges.shape[1], self.relation_dim
+            )
+        pair_features = build_relation_pair_features(object_tokens, relation_edges, relation_embeddings)
+        return self.relation_predicate_predictor(pair_features)
+
+    def predict_graph_visual(self, object_tokens, masks):
+        assert self.graph_visual_projector is not None, "graph_visual_projector is not enabled"
+        pooled = masked_mean_pool(object_tokens, masks)
+        return self.graph_visual_projector(pooled)

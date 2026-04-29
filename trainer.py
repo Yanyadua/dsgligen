@@ -191,6 +191,24 @@ def extract_relation_union_latent_features(latents, object_boxes, relation_edges
     return pooled.flatten(start_dim=1), valid_mask
 
 
+def extract_global_latent_features(latents, output_size):
+    pooled = torch.nn.functional.adaptive_avg_pool2d(latents.detach(), (output_size, output_size))
+    return pooled.flatten(start_dim=1)
+
+
+def mask_relation_inputs(relation_embeddings, relation_geo_features, relation_masks, mask_ratio):
+    if mask_ratio <= 0:
+        return relation_embeddings, relation_geo_features, relation_masks.bool()
+
+    random_keep = torch.rand_like(relation_masks.float()) < mask_ratio
+    masked_edges = random_keep & relation_masks.bool()
+    corrupted_embeddings = relation_embeddings.clone()
+    corrupted_geo = relation_geo_features.clone()
+    corrupted_embeddings[masked_edges] = 0
+    corrupted_geo[masked_edges] = 0
+    return corrupted_embeddings, corrupted_geo, masked_edges
+
+
 def sub_batch(batch, num=1):
     # choose first num in given batch 
     num = num if num > 1 else 1 
@@ -380,6 +398,9 @@ class Trainer:
                         or "position_net.graph_gate" in name
                         or "position_net.graph_adapter" in name
                         or "position_net.relation_geo_predictor" in name
+                        or "position_net.relation_visual_predictor" in name
+                        or "position_net.relation_predicate_predictor" in name
+                        or "position_net.graph_visual_projector" in name
                     )
                     if is_graph_adapter_param:
                         params.append(p)
@@ -508,7 +529,15 @@ class Trainer:
         if position_net is None:
             return []
 
-        graph_prefixes = ("gat_layers.", "graph_gate", "graph_adapter.", "relation_geo_predictor.")
+        graph_prefixes = (
+            "gat_layers.",
+            "graph_gate",
+            "graph_adapter.",
+            "relation_geo_predictor.",
+            "relation_visual_predictor.",
+            "relation_predicate_predictor.",
+            "graph_visual_projector.",
+        )
         named_params = []
         for name, param in position_net.named_parameters():
             if any(name.startswith(prefix) for prefix in graph_prefixes):
@@ -662,21 +691,26 @@ class Trainer:
 
     def run_one_step(self, batch):
         self.ensure_scene_graph_text_embeddings(batch)
-        x_start, t, context, inpainting_extra_input, grounding_extra_input = self.get_input(batch)
-        noise = torch.randn_like(x_start)
-        x_noisy = self.diffusion.q_sample(x_start=x_start, t=t, noise=noise)
-
         grounding_input = self.grounding_tokenizer_input.prepare(batch)
-        input = dict(x=x_noisy, 
-                    timesteps=t, 
-                    context=context, 
-                    inpainting_extra_input=inpainting_extra_input,
-                    grounding_extra_input=grounding_extra_input,
-                    grounding_input=grounding_input)
-        model_output = self.model(input)
-        
-        diffusion_loss = torch.nn.functional.mse_loss(model_output, noise) * self.l_simple_weight
-        loss = diffusion_loss
+        diffusion_loss_weight = float(getattr(self.config, "diffusion_loss_weight", 1.0))
+        if diffusion_loss_weight > 0:
+            x_start, t, context, inpainting_extra_input, grounding_extra_input = self.get_input(batch)
+            noise = torch.randn_like(x_start)
+            x_noisy = self.diffusion.q_sample(x_start=x_start, t=t, noise=noise)
+
+            input = dict(x=x_noisy,
+                        timesteps=t,
+                        context=context,
+                        inpainting_extra_input=inpainting_extra_input,
+                        grounding_extra_input=grounding_extra_input,
+                        grounding_input=grounding_input)
+            model_output = self.model(input)
+            diffusion_loss = torch.nn.functional.mse_loss(model_output, noise) * self.l_simple_weight
+        else:
+            x_start = self.autoencoder.encode(batch["image"])
+            diffusion_loss = x_start.new_tensor(0.0)
+
+        loss = diffusion_loss * diffusion_loss_weight
         self.loss_dict = {"loss": loss.item(), "diffusion_loss": diffusion_loss.item()}
 
         object_align_loss_weight = getattr(self.config, "object_align_loss_weight", 0.0)
@@ -944,6 +978,91 @@ class Trainer:
                             "loss": loss.item(),
                             "relation_visual_align_loss": relation_visual_align_loss.item(),
                         })
+
+        graph_image_align_loss_weight = getattr(self.config, "graph_image_align_loss_weight", 0.0)
+        has_graph_visual_predictor = (
+            hasattr(position_net, "predict_graph_visual")
+            and getattr(position_net, "graph_visual_projector", None) is not None
+        )
+        if graph_image_align_loss_weight > 0 and has_graph_visual_predictor:
+            object_tokens = self.model.position_net(**grounding_input)
+            graph_pred = self.model.position_net.predict_graph_visual(
+                object_tokens,
+                grounding_input["masks"],
+            )
+            output_size = int(getattr(self.config, "graph_image_align_output_size", 4))
+            graph_target = extract_global_latent_features(x_start, output_size=output_size)
+            if graph_pred.shape[-1] == graph_target.shape[-1]:
+                graph_pred = torch.nn.functional.normalize(graph_pred, dim=-1)
+                graph_target = torch.nn.functional.normalize(graph_target, dim=-1)
+                graph_image_align_loss = 1 - (graph_pred * graph_target).sum(dim=-1).mean()
+                loss = loss + graph_image_align_loss_weight * graph_image_align_loss
+                self.loss_dict.update({
+                    "loss": loss.item(),
+                    "graph_image_align_loss": graph_image_align_loss.item(),
+                })
+
+        masked_relation_loss_weight = getattr(self.config, "masked_relation_loss_weight", 0.0)
+        has_relation_predicate_predictor = (
+            hasattr(position_net, "predict_relation_logits")
+            and getattr(position_net, "relation_predicate_predictor", None) is not None
+        )
+        if masked_relation_loss_weight > 0 and has_relation_geo_inputs and has_relation_predicate_predictor:
+            relation_edges = grounding_input["relation_edges"].long()
+            relation_masks = grounding_input.get("relation_masks")
+            relation_embeddings = grounding_input["relation_embeddings"].detach()
+            relation_geo_features = grounding_input["relation_geo_features"].detach()
+            relation_label_ids = grounding_input.get("relation_label_ids")
+            if (
+                relation_masks is not None
+                and relation_label_ids is not None
+                and relation_edges.shape[1] > 0
+            ):
+                mask_ratio = float(getattr(self.config, "masked_relation_ratio", 0.15))
+                masked_embeddings, masked_geo_features, masked_edges = mask_relation_inputs(
+                    relation_embeddings,
+                    relation_geo_features,
+                    relation_masks,
+                    mask_ratio,
+                )
+                if masked_edges.sum() > 0:
+                    masked_input = dict(grounding_input)
+                    masked_input["relation_embeddings"] = masked_embeddings
+                    masked_input["relation_geo_features"] = masked_geo_features
+                    object_tokens = self.model.position_net(**masked_input)
+                    relation_logits = self.model.position_net.predict_relation_logits(
+                        object_tokens,
+                        relation_edges,
+                        relation_embeddings=masked_embeddings,
+                    )
+                    relation_geo_pred = self.model.position_net.predict_relation_geo(
+                        object_tokens,
+                        relation_edges,
+                        relation_embeddings=masked_embeddings,
+                    )
+                    masked_labels = relation_label_ids.long()[masked_edges]
+                    masked_logits = relation_logits[masked_edges]
+                    masked_relation_cls_loss = torch.nn.functional.cross_entropy(
+                        masked_logits,
+                        masked_labels,
+                    )
+                    masked_geo_target = relation_geo_features[masked_edges].to(dtype=relation_geo_pred.dtype)
+                    beta = getattr(self.config, "relation_geo_prediction_beta", 0.1)
+                    masked_relation_geo_loss = torch.nn.functional.smooth_l1_loss(
+                        relation_geo_pred[masked_edges],
+                        masked_geo_target,
+                        reduction="mean",
+                        beta=beta,
+                    )
+                    masked_relation_geo_weight = float(getattr(self.config, "masked_relation_geo_weight", 1.0))
+                    masked_relation_loss = masked_relation_cls_loss + masked_relation_geo_weight * masked_relation_geo_loss
+                    loss = loss + masked_relation_loss_weight * masked_relation_loss
+                    self.loss_dict.update({
+                        "loss": loss.item(),
+                        "masked_relation_cls_loss": masked_relation_cls_loss.item(),
+                        "masked_relation_geo_loss": masked_relation_geo_loss.item(),
+                        "masked_relation_loss": masked_relation_loss.item(),
+                    })
 
         return loss 
         

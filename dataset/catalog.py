@@ -22,6 +22,16 @@ class DatasetCatalog:
             ),
         }
 
+        self.VGSceneGraphFixedSplit = {
+            "target": "dataset.dataset_vg_fixedsplit_scene_graph.VGFixedSplitSceneGraphDataset",
+            "train_params": dict(
+                h5_path=os.path.join(ROOT, 'fixed_split_work/datasets/vg/train.h5'),
+                vocab_path=os.path.join(ROOT, 'fixed_split_work/datasets/vg/vocab.json'),
+                image_root=os.path.join(ROOT, 'fixed_split_work/datasets/vg/images'),
+                split_name='train',
+            ),
+        }
+
 
         # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
 
@@ -141,7 +151,6 @@ class DatasetCatalog:
                 caption_path = os.path.join(ROOT,'ADE/ade_train_images_cation.json'),
             ),
         }
-
 
 
 
