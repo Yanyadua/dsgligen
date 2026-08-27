@@ -4,4 +4,7 @@ __pycache__/
 *.log
 eval_outputs/
 OUTPUT_*/
+artifacts/
+gligen_checkpoints/
+standard_sg2im_fresh_h5/
 .idea/
