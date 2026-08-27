@@ -30,12 +30,16 @@ fi
 download() {
   local url="$1"
   local target="$2"
-  if [[ -s "${target}" ]]; then
-    echo "Using existing $(basename "${target}")"
+  if command -v aria2c >/dev/null 2>&1; then
+    # The official VG archive supports HTTP byte ranges. Eight connections make
+    # the fresh-instance download practical while preserving the exact URL.
+    aria2c --continue=true --max-connection-per-server=8 --split=8 \
+      --min-split-size=1M --file-allocation=none --summary-interval=30 \
+      --dir "$(dirname "${target}")" --out "$(basename "${target}")" \
+      "${url}"
     return
   fi
-  curl -fL --retry 5 --continue-at - \
-    --output "${target}" "${url}"
+  curl -fL --retry 5 --continue-at - --output "${target}" "${url}"
 }
 
 cd "${RAW_DIR}"
@@ -48,11 +52,17 @@ download "${VG_MIRROR}/relationship_alias.txt" relationship_alias.txt
 download "https://cs.stanford.edu/people/rak248/VG_100K_2/images.zip" images.zip
 download "https://cs.stanford.edu/people/rak248/VG_100K_2/images2.zip" images2.zip
 
+unzip -tq objects.json.zip
+unzip -tq attributes.json.zip
+unzip -tq relationships.json.zip
+unzip -tq image_data.json.zip
 unzip -n objects.json.zip
 unzip -n attributes.json.zip
 unzip -n relationships.json.zip
 unzip -n image_data.json.zip
 mkdir -p images
+unzip -tq images.zip
+unzip -tq images2.zip
 unzip -n images.zip -d images
 unzip -n images2.zip -d images
 
@@ -68,7 +78,9 @@ unzip -n images2.zip -d images
   --output_h5_dir "${OUT_DIR}" \
   --output_vocab_json "${OUT_DIR}/vocab.json"
 
-ln -s "${RAW_DIR}/images" "${OUT_DIR}/images"
+if [[ ! -e "${OUT_DIR}/images" ]]; then
+  ln -s "${RAW_DIR}/images" "${OUT_DIR}/images"
+fi
 
 "${PYTHON:-python}" "${PROJECT_DIR}/scripts/eval/validate_standard_sg2im_h5.py" \
   --h5-root "${OUT_DIR}"
