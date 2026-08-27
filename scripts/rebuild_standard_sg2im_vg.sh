@@ -34,7 +34,7 @@ download() {
     echo "Using existing $(basename "${target}")"
     return
   fi
-  curl -fL --retry 5 --retry-all-errors --continue-at - \
+  curl -fL --retry 5 --continue-at - \
     --output "${target}" "${url}"
 }
 
