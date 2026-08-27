@@ -1,0 +1,102 @@
+diffusion:
+  target: ldm.models.diffusion.ldm.LatentDiffusion
+  params:
+    linear_start: 0.00085
+    linear_end: 0.012
+    timesteps: 1000
+
+model:
+  target: ldm.modules.diffusionmodules.openaimodel.UNetModel
+  params:
+    image_size: 64
+    in_channels: 4
+    out_channels: 4
+    model_channels: 320
+    attention_resolutions: [4, 2, 1]
+    num_res_blocks: 2
+    channel_mult: [1, 2, 4, 4]
+    num_heads: 8
+    transformer_depth: 1
+    context_dim: 768
+    fuser_type: gatedSA
+    use_checkpoint: True
+
+    grounding_tokenizer:
+      target: ldm.modules.diffusionmodules.scene_graph_grounding_net.PositionNet
+      params:
+        in_dim: 768
+        out_dim: 768
+        hidden_dim: 768
+        base_hidden_dim: 512
+        gat_layers: 1
+        gat_heads: 2
+        dropout: 0.0
+        relation_dim: 768
+        relation_geo_dim: 12
+        graph_gate_init: -3.0
+        graph_delta_max_ratio: 5.0
+        graph_delta_target_ratio: 0.12
+        relation_visual_dim: 64
+        graph_visual_dim: 64
+        relation_predicate_classes: 64
+
+autoencoder:
+  target: ldm.models.autoencoder.AutoencoderKL
+  params:
+    scale_factor: 0.18215
+    embed_dim: 4
+    ddconfig:
+      double_z: true
+      z_channels: 4
+      resolution: 256
+      in_channels: 3
+      out_ch: 3
+      ch: 128
+      ch_mult: [1, 2, 4, 4]
+      num_res_blocks: 2
+      attn_resolutions: []
+      dropout: 0.0
+
+text_encoder:
+  target: ldm.modules.encoders.modules.FrozenCLIPEmbedder
+
+train_dataset_names:
+  VGSceneGraph:
+    image_root: /root/autodl-tmp/standard_sg2im_fresh_h5/images
+    h5_path: /root/autodl-tmp/standard_sg2im_fresh_h5/train.h5
+    vocab_path: /root/autodl-tmp/standard_sg2im_fresh_h5/vocab.json
+    image_size: 256
+    random_crop: false
+    random_flip: true
+    box_transform_mode: gligen
+    min_box_size: 0.0
+    max_boxes_per_data: 10
+    max_relations_per_data: 15
+    selection_policy: sg2im_relation_area
+    caption_style_prefix: A natural color photograph of
+    caption_style_suffix: realistic lighting, natural colors
+    prob_use_caption: 1.0
+    enable_relation_grounding_tokens: true
+    max_relation_grounding_tokens: 5
+    relation_grounding_template: "{subject} {predicate} {object}"
+
+grounding_tokenizer_input:
+  target: grounding_input.scene_graph_grounding_tokenizer_input.GroundingNetInput
+
+diffusion_loss_weight: 1.0
+enable_frozen_quality_teacher: true
+quality_distillation_loss_weight: 2.0
+graph_distillation_loss_weight: 0.0
+object_align_loss_weight: 0.03
+spatial_consistency_loss_weight: 0.0
+object_box_contrastive_loss_weight: 0.05
+relation_contrastive_loss_weight: 0.03
+relation_geo_prediction_loss_weight: 0.03
+relation_geo_prediction_beta: 0.1
+relation_geo_prediction_filter_predicates: true
+relation_geo_prediction_source: masked_graph_delta
+relation_geo_consistency_loss_weight: 0.02
+relation_geo_consistency_filter_predicates: true
+relation_visual_align_loss_weight: 0.0
+graph_image_align_loss_weight: 0.0
+masked_relation_loss_weight: 0.0

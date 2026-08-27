@@ -1,0 +1,1214 @@
+diff --git a/dataset/catalog.py b/dataset/catalog.py
+index a3879bf..0404fec 100644
+--- a/dataset/catalog.py
++++ b/dataset/catalog.py
+@@ -1,140 +1,102 @@
+-import os 
++import os
++
+ 
+ class DatasetCatalog:
+     def __init__(self, ROOT):
+-
+-
+-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
+-
+-
+-        self.VGGrounding = {   
++        self.VGGrounding = {
+             "target": "dataset.tsv_dataset.TSVDataset",
+             "train_params": dict(
+-                tsv_path=os.path.join(ROOT,'GROUNDING/gqa/tsv/train-00.tsv'),
++                tsv_path=os.path.join(ROOT, "GROUNDING/gqa/tsv/train-00.tsv"),
+             ),
+         }
+ 
+-
+-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
+-
++        self.VGSceneGraph = {
++            "target": "dataset.dataset_vg_scene_graph.VGSceneGraphDataset",
++            "train_params": dict(),
++        }
+ 
+         self.FlickrGrounding = {
+             "target": "dataset.tsv_dataset.TSVDataset",
+-            "train_params":dict(
+-                tsv_path=os.path.join(ROOT,'GROUNDING/flickr30k/tsv/train-00.tsv'),
++            "train_params": dict(
++                tsv_path=os.path.join(ROOT, "GROUNDING/flickr30k/tsv/train-00.tsv"),
+             ),
+         }
+ 
+-
+-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
+-
+-        self.SBUGrounding = {   
++        self.SBUGrounding = {
+             "target": "dataset.tsv_dataset.TSVDataset",
+-            "train_params":dict(
+-                tsv_path=os.path.join(ROOT,'GROUNDING/SBU/tsv/train-00.tsv'),
++            "train_params": dict(
++                tsv_path=os.path.join(ROOT, "GROUNDING/SBU/tsv/train-00.tsv"),
+             ),
+-         }
+-
+-
+-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
+-
++        }
+ 
+-        self.CC3MGrounding = {   
++        self.CC3MGrounding = {
+             "target": "dataset.tsv_dataset.TSVDataset",
+-            "train_params":dict(
+-                tsv_path=os.path.join(ROOT,'GROUNDING/CC3M/tsv/train-00.tsv'),
++            "train_params": dict(
++                tsv_path=os.path.join(ROOT, "GROUNDING/CC3M/tsv/train-00.tsv"),
+             ),
+         }
+ 
+-
+-
+-
+-
+         self.CC3MGroundingHed = {
+             "target": "dataset.dataset_hed.HedDataset",
+-            "train_params":dict(
+-                tsv_path=os.path.join(ROOT,'GROUNDING/CC3M/tsv/train-00.tsv'),
+-                hed_tsv_path=os.path.join(ROOT,'GROUNDING/CC3M/tsv_hed/train-00.tsv'),
++            "train_params": dict(
++                tsv_path=os.path.join(ROOT, "GROUNDING/CC3M/tsv/train-00.tsv"),
++                hed_tsv_path=os.path.join(ROOT, "GROUNDING/CC3M/tsv_hed/train-00.tsv"),
+             ),
+         }
+ 
+-
+         self.CC3MGroundingCanny = {
+             "target": "dataset.dataset_canny.CannyDataset",
+-            "train_params":dict(
+-                tsv_path=os.path.join(ROOT,'GROUNDING/CC3M/tsv/train-00.tsv'),
+-                canny_tsv_path=os.path.join(ROOT,'GROUNDING/CC3M/tsv_canny/train-00.tsv'),
++            "train_params": dict(
++                tsv_path=os.path.join(ROOT, "GROUNDING/CC3M/tsv/train-00.tsv"),
++                canny_tsv_path=os.path.join(ROOT, "GROUNDING/CC3M/tsv_canny/train-00.tsv"),
+             ),
+         }
+ 
+-
+         self.CC3MGroundingDepth = {
+             "target": "dataset.dataset_depth.DepthDataset",
+-            "train_params":dict(
+-                tsv_path=os.path.join(ROOT,'GROUNDING/CC3M/tsv/train-00.tsv'),
+-                depth_tsv_path=os.path.join(ROOT,'GROUNDING/CC3M/tsv_depth/train-00.tsv'),
++            "train_params": dict(
++                tsv_path=os.path.join(ROOT, "GROUNDING/CC3M/tsv/train-00.tsv"),
++                depth_tsv_path=os.path.join(ROOT, "GROUNDING/CC3M/tsv_depth/train-00.tsv"),
+             ),
+         }
+ 
+-
+-
+-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
+-
+-
+-        self.CC12MGrounding = {   
++        self.CC12MGrounding = {
+             "target": "dataset.tsv_dataset.TSVDataset",
+-            "train_params":dict(
+-                tsv_path=os.path.join(ROOT,'GROUNDING/CC12M/tsv/train-00.tsv'),
++            "train_params": dict(
++                tsv_path=os.path.join(ROOT, "GROUNDING/CC12M/tsv/train-00.tsv"),
+             ),
+         }
+ 
+-
+-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
+-
+-        self.Obj365Detection = {   
++        self.Obj365Detection = {
+             "target": "dataset.tsv_dataset.TSVDataset",
+-            "train_params":dict(
+-                tsv_path=os.path.join(ROOT,'OBJECTS365/tsv/train-00.tsv'),
++            "train_params": dict(
++                tsv_path=os.path.join(ROOT, "OBJECTS365/tsv/train-00.tsv"),
+             ),
+         }
+ 
+-
+-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
+-
+-        self.COCO2017Keypoint = {   
++        self.COCO2017Keypoint = {
+             "target": "dataset.dataset_kp.KeypointDataset",
+-            "train_params":dict(
+-                image_root = os.path.join(ROOT,'COCO/images'),
+-                keypoints_json_path = os.path.join(ROOT,'COCO/annotations2017/person_keypoints_train2017.json'),
+-                caption_json_path = os.path.join(ROOT,'COCO/annotations2017/captions_train2017.json'),
++            "train_params": dict(
++                image_root=os.path.join(ROOT, "COCO/images"),
++                keypoints_json_path=os.path.join(ROOT, "COCO/annotations2017/person_keypoints_train2017.json"),
++                caption_json_path=os.path.join(ROOT, "COCO/annotations2017/captions_train2017.json"),
+             ),
+         }
+ 
+-
+-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
+-
+-        self.DIODENormal = {   
++        self.DIODENormal = {
+             "target": "dataset.dataset_normal.NormalDataset",
+-            "train_params":dict(
+-                image_rootdir = os.path.join(ROOT,'normal/image_train'),
+-                normal_rootdir = os.path.join(ROOT,'normal/normal_train'),
+-                caption_path = os.path.join(ROOT,'normal/diode_cation.json'),
++            "train_params": dict(
++                image_rootdir=os.path.join(ROOT, "normal/image_train"),
++                normal_rootdir=os.path.join(ROOT, "normal/normal_train"),
++                caption_path=os.path.join(ROOT, "normal/diode_cation.json"),
+             ),
+         }
+ 
+-
+-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
+-
+-        self.ADESemantic = {   
++        self.ADESemantic = {
+             "target": "dataset.dataset_sem.SemanticDataset",
+-            "train_params":dict(
+-                image_rootdir = os.path.join(ROOT,'ADE/ADEChallengeData2016/images/training'),
+-                sem_rootdir = os.path.join(ROOT,'ADE/ADEChallengeData2016/annotations/training'),
+-                caption_path = os.path.join(ROOT,'ADE/ade_train_images_cation.json'),
++            "train_params": dict(
++                image_rootdir=os.path.join(ROOT, "ADE/ADEChallengeData2016/images/training"),
++                sem_rootdir=os.path.join(ROOT, "ADE/ADEChallengeData2016/annotations/training"),
++                caption_path=os.path.join(ROOT, "ADE/ade_train_images_cation.json"),
+             ),
+         }
+-
+-
+-
+-
+-
+diff --git a/main.py b/main.py
+index b56ffbd..3998474 100644
+--- a/main.py
++++ b/main.py
+@@ -25,11 +25,19 @@ if __name__ == "__main__":
+ 
+     parser.add_argument("--base_learning_rate", type=float,  default=5e-5, help="")
+     parser.add_argument("--weight_decay", type=float,  default=0.0, help="")
+-    parser.add_argument("--warmup_steps", type=int,  default=10000, help="")
++    parser.add_argument("--warmup_steps", type=int,  default=100, help="")
+     parser.add_argument("--scheduler_type", type=str,  default='constant', help="cosine or constant")
++    parser.add_argument("--graph_lr_multiplier", type=float, default=1.0,
++        help="Optional learning-rate multiplier for trainable scene-graph branch parameters.")
++    parser.add_argument("--graph_gate_lr_multiplier", type=float, default=1.0,
++        help="Optional learning-rate multiplier for position_net.graph_gate.")
+     parser.add_argument("--batch_size", type=int,  default=2, help="")
+     parser.add_argument("--workers", type=int,  default=1, help="")
+     parser.add_argument("--official_ckpt_name", type=str,  default="sd-v1-4.ckpt", help="SD ckpt name and it is expected in DATA_ROOT, thus DATA_ROOT/official_ckpt_name must exists")
++    parser.add_argument("--init_from_gligen_ckpt", type=lambda x:x if type(x) == str and x.lower() != "none" else None, default=None,
++        help="Initialize model/text_encoder/autoencoder/diffusion from a GLIGEN training checkpoint. Useful when sd-v1-4.ckpt is unavailable.")
++    parser.add_argument("--grounding_ckpt", type=lambda x:x if type(x) == str and x.lower() != "none" else None, default=None,
++        help="Load a lightweight grounding/position_net checkpoint for evaluation or resume.")
+     parser.add_argument("--ckpt", type=lambda x:x if type(x) == str and x.lower() != "none" else None,  default=None, 
+         help=("If given, then it will start training from this ckpt"
+               "It has higher prioty than official_ckpt_name, but lower than the ckpt found in autoresuming (see trainer.py) "
+@@ -41,11 +49,18 @@ if __name__ == "__main__":
+     parser.add_argument('--random_add_bg_mask', default=False, type=lambda x:x.lower() == "true", help="Only used if inpaint_mode is true. If true, 0.5 chance add arbitrary mask for the whole image. See code for details")
+     
+     parser.add_argument('--enable_ema', default=False, type=lambda x:x.lower() == "true")
++    parser.add_argument('--freeze_fuser', default=False, type=lambda x:x.lower() == "true",
++        help="If true, freeze GLIGEN gated fuser layers and train only grounding-related modules such as position_net.")
++    parser.add_argument('--freeze_position_base', default=False, type=lambda x:x.lower() == "true",
++        help="If true, freeze position_net node_in/out MLP path and train only the scene-graph adapter branch.")
+     parser.add_argument("--ema_rate", type=float,  default=0.9999, help="")
+     parser.add_argument("--total_iters", type=int,  default=500000, help="")
+     parser.add_argument("--save_every_iters", type=int,  default=5000, help="")
+     parser.add_argument("--disable_inference_in_training", type=lambda x:x.lower() == "true",  default=False, help="Do not do inference, thus it is faster to run first a few iters. It may be useful for debugging ")
+-
++    parser.add_argument("--disable_saving_in_training", type=lambda x:x.lower() == "true", default=False,
++        help="Do not save checkpoints during quick smoke/debug training runs.")
++    parser.add_argument("--save_trainable_only", type=lambda x:x.lower() == "true", default=False,
++        help="Save only trainable model tensors such as position_net/fuser instead of the full GLIGEN checkpoint.")
+ 
+     args = parser.parse_args()
+     assert args.scheduler_type in ['cosine', 'constant']
+@@ -84,5 +99,3 @@ if __name__ == "__main__":
+ 
+ 
+ 
+-
+-
+diff --git a/trainer.py b/trainer.py
+index 455d302..5b4e9cc 100644
+--- a/trainer.py
++++ b/trainer.py
+@@ -14,6 +14,7 @@ import shutil
+ import torchvision
+ from convert_ckpt import add_additional_channels
+ import math
++import re
+ from torch.nn.parallel import DistributedDataParallel as DDP
+ from tqdm import tqdm
+ from distributed import get_rank, synchronize, get_world_size
+@@ -92,11 +93,139 @@ def batch_to_device(batch, device):
+     return batch
+ 
+ 
++def normalize_collated_text_grid(value, batch_size):
++    """Default PyTorch collation transposes fixed-length string lists."""
++    if value is None:
++        return None
++    if len(value) == 0:
++        return []
++    if len(value) == batch_size and all(isinstance(row, (list, tuple)) for row in value):
++        return [list(row) for row in value]
++    return [list(items) for items in zip(*value)]
++
++
++GEOMETRIC_RELATION_PATTERNS = {
++    "left": re.compile(r"\b(left|left of|to the left of)\b"),
++    "right": re.compile(r"\b(right|right of|to the right of)\b"),
++    "above": re.compile(r"\b(above|over|on top of)\b"),
++    "below": re.compile(r"\b(below|under|beneath)\b"),
++    "inside": re.compile(r"\b(in|inside|within)\b"),
++    "on": re.compile(r"\b(on|upon|sitting on|standing on|lying on)\b"),
++}
++
++
++def relation_text_geometry_mask(relation_texts, batch_size, device, dtype):
++    """Select relation labels whose meaning is primarily geometric."""
++    normalized = normalize_collated_text_grid(relation_texts, batch_size)
++    if not normalized:
++        return None
++    mask = torch.zeros((batch_size, len(normalized[0])), device=device, dtype=dtype)
++    for batch_idx, row in enumerate(normalized):
++        for rel_idx, text in enumerate(row):
++            text = str(text).lower()
++            if any(pattern.search(text) for pattern in GEOMETRIC_RELATION_PATTERNS.values()):
++                mask[batch_idx, rel_idx] = 1
++    return mask
++
++
++def corrupt_relation_geo_features(relation_geo_features):
++    wrong_geo = relation_geo_features.clone()
++    wrong_geo[..., 0] = -wrong_geo[..., 0]
++    wrong_geo[..., 1] = -wrong_geo[..., 1]
++    wrong_geo[..., 8], wrong_geo[..., 9] = relation_geo_features[..., 9], relation_geo_features[..., 8]
++    wrong_geo[..., 10], wrong_geo[..., 11] = relation_geo_features[..., 11], relation_geo_features[..., 10]
++    return wrong_geo
++
++
++def build_relation_union_boxes(object_boxes, relation_edges):
++    batch_size, num_nodes, _ = object_boxes.shape
++    edge_index = relation_edges.long().clamp(min=0, max=max(num_nodes - 1, 0))
++    src = edge_index[..., 0]
++    dst = edge_index[..., 1]
++    batch_idx = torch.arange(batch_size, device=object_boxes.device)[:, None].expand_as(src)
++    src_boxes = object_boxes[batch_idx, src]
++    dst_boxes = object_boxes[batch_idx, dst]
++    x1 = torch.minimum(src_boxes[..., 0], dst_boxes[..., 0])
++    y1 = torch.minimum(src_boxes[..., 1], dst_boxes[..., 1])
++    x2 = torch.maximum(src_boxes[..., 2], dst_boxes[..., 2])
++    y2 = torch.maximum(src_boxes[..., 3], dst_boxes[..., 3])
++    return torch.stack([x1, y1, x2, y2], dim=-1)
++
++
++def extract_relation_union_latent_features(latents, object_boxes, relation_edges, relation_masks, output_size):
++    valid_mask = relation_masks > 0
++    if valid_mask.sum() == 0:
++        return None, valid_mask
++
++    union_boxes = build_relation_union_boxes(object_boxes, relation_edges)
++    batch_indices = torch.arange(latents.shape[0], device=latents.device)[:, None].expand_as(valid_mask)
++    coords = union_boxes[valid_mask].to(dtype=latents.dtype).clone()
++    height, width = latents.shape[-2:]
++    eps_x = 1.0 / max(width, 1)
++    eps_y = 1.0 / max(height, 1)
++
++    coords[:, 0] = coords[:, 0].clamp(min=0.0, max=1.0 - eps_x)
++    coords[:, 1] = coords[:, 1].clamp(min=0.0, max=1.0 - eps_y)
++    coords[:, 2] = torch.maximum(coords[:, 2].clamp(min=0.0, max=1.0), coords[:, 0] + eps_x)
++    coords[:, 3] = torch.maximum(coords[:, 3].clamp(min=0.0, max=1.0), coords[:, 1] + eps_y)
++
++    coords[:, 0] *= width
++    coords[:, 2] *= width
++    coords[:, 1] *= height
++    coords[:, 3] *= height
++
++    rois = torch.cat(
++        [
++            batch_indices[valid_mask].to(dtype=latents.dtype).unsqueeze(-1),
++            coords,
++        ],
++        dim=-1,
++    )
++    pooled = torchvision.ops.roi_align(
++        latents.detach(),
++        rois,
++        output_size=(output_size, output_size),
++        spatial_scale=1.0,
++        aligned=True,
++    )
++    return pooled.flatten(start_dim=1), valid_mask
++
++
++def extract_global_latent_features(latents, output_size):
++    pooled = torch.nn.functional.adaptive_avg_pool2d(latents.detach(), (output_size, output_size))
++    return pooled.flatten(start_dim=1)
++
++
++def mask_relation_inputs(relation_embeddings, relation_geo_features, relation_masks, mask_ratio):
++    if mask_ratio <= 0:
++        return relation_embeddings, relation_geo_features, relation_masks.bool()
++
++    random_keep = torch.rand_like(relation_masks.float()) < mask_ratio
++    masked_edges = random_keep & relation_masks.bool()
++    corrupted_embeddings = relation_embeddings.clone()
++    corrupted_geo = relation_geo_features.clone()
++    corrupted_embeddings[masked_edges] = 0
++    corrupted_geo[masked_edges] = 0
++    return corrupted_embeddings, corrupted_geo, masked_edges
++
++
+ def sub_batch(batch, num=1):
+     # choose first num in given batch 
+     num = num if num > 1 else 1 
+     for k in batch:
+-        batch[k] = batch[k][0:num]
++        value = batch[k]
++        if isinstance(value, torch.Tensor):
++            batch[k] = value[0:num]
++        elif isinstance(value, (list, tuple)):
++            if len(value) > 0 and isinstance(value[0], (list, tuple)):
++                # PyTorch default collation can transpose fixed-length text grids
++                # into slot-major tuples like [max_box][batch]. Slice the inner
++                # batch dimension in that case so padding structure stays intact.
++                batch[k] = [list(items[0:num]) for items in value]
++            else:
++                batch[k] = value[0:num]
++        else:
++            batch[k] = value
+     return batch
+ 
+ 
+@@ -171,6 +300,9 @@ class Trainer:
+ 
+         self.l_simple_weight = 1
+         self.name, self.writer, checkpoint = create_expt_folder_with_auto_resuming(config.OUTPUT_ROOT, config.name)
++        self.graph_stats_interval = int(getattr(config, "graph_stats_interval", 50))
++        self.graph_stats_enabled = bool(getattr(config, "log_graph_stats", True))
++        self.graph_param_snapshot = None
+         if get_rank() == 0:
+             shutil.copyfile(config.yaml_file, os.path.join(self.name, "train_config_file.yaml")  )
+             self.config_dict = vars(config)
+@@ -184,7 +316,15 @@ class Trainer:
+         self.diffusion = instantiate_from_config(config.diffusion).to(self.device)
+ 
+         
+-        state_dict = read_official_ckpt(  os.path.join(config.DATA_ROOT, config.official_ckpt_name)   )
++        init_from_gligen_ckpt = getattr(config, "init_from_gligen_ckpt", None)
++        if init_from_gligen_ckpt is not None:
++            if get_rank() == 0:
++                print("initializing from GLIGEN checkpoint " + init_from_gligen_ckpt)
++            state_dict = torch.load(init_from_gligen_ckpt, map_location="cpu")
++            for key in ["model", "autoencoder", "text_encoder", "diffusion"]:
++                assert key in state_dict, f"{init_from_gligen_ckpt} is missing {key}"
++        else:
++            state_dict = read_official_ckpt(  os.path.join(config.DATA_ROOT, config.official_ckpt_name)   )
+         
+         # modify the input conv for SD if necessary (grounding as unet input; inpaint)
+         additional_channels = self.model.additional_channel_from_downsampler
+@@ -193,13 +333,23 @@ class Trainer:
+         add_additional_channels(state_dict["model"], additional_channels)
+         self.input_conv_train = True if additional_channels>0 else False
+ 
+-        # load original SD ckpt (with inuput conv may be modified) 
+-        missing_keys, unexpected_keys = self.model.load_state_dict( state_dict["model"], strict=False  )
+-        assert unexpected_keys == []
+-        original_params_names = list( state_dict["model"].keys()  ) # used for sanity check later 
++        # load original SD/GLIGEN ckpt (with input conv may be modified)
++        if init_from_gligen_ckpt is not None:
++            compatible_model_state = {
++                k: v for k, v in state_dict["model"].items()
++                if (k in self.model.state_dict() and self.model.state_dict()[k].shape == v.shape)
++            }
++            missing_keys, unexpected_keys = self.model.load_state_dict(compatible_model_state, strict=False)
++            if get_rank() == 0:
++                skipped = len(state_dict["model"]) - len(compatible_model_state)
++                print(f"loaded {len(compatible_model_state)} compatible model tensors, skipped {skipped}")
++        else:
++            missing_keys, unexpected_keys = self.model.load_state_dict( state_dict["model"], strict=False  )
++            assert unexpected_keys == []
++        original_params_names = list( self.model.state_dict().keys()  ) # used for sanity check later
+         
+         self.autoencoder.load_state_dict( state_dict["autoencoder"]  )
+-        self.text_encoder.load_state_dict( state_dict["text_encoder"]  )
++        self.text_encoder.load_state_dict( state_dict["text_encoder"], strict=False  )
+         self.diffusion.load_state_dict( state_dict["diffusion"]  )
+  
+         self.autoencoder.eval()
+@@ -212,28 +362,78 @@ class Trainer:
+             first_stage_ckpt = torch.load(self.config.ckpt, map_location="cpu")
+             self.model.load_state_dict(first_stage_ckpt["model"])
+ 
++        grounding_ckpt = getattr(self.config, "grounding_ckpt", None)
++        if grounding_ckpt is not None:
++            grounding_state = torch.load(grounding_ckpt, map_location="cpu")
++            grounding_state = grounding_state.get("model_trainable", grounding_state.get("model", {}))
++            current_state = self.model.state_dict()
++            compatible_grounding = {
++                k: v for k, v in grounding_state.items()
++                if k in current_state and current_state[k].shape == v.shape
++            }
++            current_state.update(compatible_grounding)
++            self.model.load_state_dict(current_state, strict=True)
++            if get_rank() == 0:
++                skipped = len(grounding_state) - len(compatible_grounding)
++                print(f"loaded {len(compatible_grounding)} compatible grounding tensors from {grounding_ckpt}, skipped {skipped}")
++
+ 
+         # = = = = = = = = = = = = = = = = = create opt = = = = = = = = = = = = = = = = = #
+-        params = []
++        base_params = []
++        graph_params = []
++        graph_gate_params = []
+         trainable_names = []
+         all_params_name = []
++        freeze_position_base = getattr(config, "freeze_position_base", False)
++        graph_prefixes = (
++            "position_net.gat_layers",
++            "position_net.graph_adapter",
++            "position_net.relation_geo_predictor",
++            "position_net.relation_visual_predictor",
++            "position_net.relation_predicate_predictor",
++            "position_net.graph_visual_projector",
++        )
++
++        def add_trainable_param(name, param):
++            if "position_net.graph_gate" in name:
++                graph_gate_params.append(param)
++            elif any(prefix in name for prefix in graph_prefixes):
++                graph_params.append(param)
++            else:
++                base_params.append(param)
++            trainable_names.append(name)
++
+         for name, p in self.model.named_parameters():
+             if ("transformer_blocks" in name) and ("fuser" in name):
+-                # New added Attention layers 
+-                params.append(p) 
+-                trainable_names.append(name)
++                # New added Attention layers. Freeze for encoder-only ablations.
++                if not getattr(config, "freeze_fuser", False):
++                    add_trainable_param(name, p)
+             elif  "position_net" in name:
+-                # Grounding token processing network 
+-                params.append(p) 
+-                trainable_names.append(name)
++                # For graph-adapter ablations, keep the object/box MLP path fixed
++                # and train only the scene-graph residual branch.
++                if freeze_position_base:
++                    is_graph_adapter_param = (
++                        "position_net.gat_layers" in name
++                        or "position_net.graph_gate" in name
++                        or "position_net.graph_adapter" in name
++                        or "position_net.relation_geo_predictor" in name
++                        or "position_net.relation_visual_predictor" in name
++                        or "position_net.relation_predicate_predictor" in name
++                        or "position_net.graph_visual_projector" in name
++                    )
++                    if is_graph_adapter_param:
++                        add_trainable_param(name, p)
++                    else:
++                        p.requires_grad = False
++                else:
++                    # Grounding token processing network
++                    add_trainable_param(name, p)
+             elif  "downsample_net" in name:
+                 # Grounding downsample network (used in input) 
+-                params.append(p) 
+-                trainable_names.append(name)
++                add_trainable_param(name, p)
+             elif (self.input_conv_train) and ("input_blocks.0.0.weight" in name):
+                 # First conv layer was modified, thus need to train 
+-                params.append(p) 
+-                trainable_names.append(name)
++                add_trainable_param(name, p)
+             else:
+                 # Following make sure we do not miss any new params
+                 # all new added trainable params have to be haddled above
+@@ -242,8 +442,22 @@ class Trainer:
+             all_params_name.append(name) 
+ 
+ 
+-        self.opt = torch.optim.AdamW(params, lr=config.base_learning_rate, weight_decay=config.weight_decay) 
+-        count_params(params)
++        self.trainable_names = trainable_names
++        param_groups = []
++        if base_params:
++            param_groups.append({"params": base_params, "lr": config.base_learning_rate})
++        if graph_params:
++            param_groups.append({
++                "params": graph_params,
++                "lr": config.base_learning_rate * float(getattr(config, "graph_lr_multiplier", 1.0)),
++            })
++        if graph_gate_params:
++            param_groups.append({
++                "params": graph_gate_params,
++                "lr": config.base_learning_rate * float(getattr(config, "graph_gate_lr_multiplier", 1.0)),
++            })
++        self.opt = torch.optim.AdamW(param_groups, lr=config.base_learning_rate, weight_decay=config.weight_decay)
++        count_params(base_params + graph_params + graph_gate_params)
+         
+         
+ 
+@@ -292,7 +506,23 @@ class Trainer:
+         self.starting_iter = 0  
+         if checkpoint is not None:
+             checkpoint = torch.load(checkpoint, map_location="cpu")
+-            self.model.load_state_dict(checkpoint["model"])
++            if "model" in checkpoint:
++                self.model.load_state_dict(checkpoint["model"])
++            elif "model_trainable" in checkpoint:
++                current_state = self.model.state_dict()
++                compatible_trainable = {
++                    k: v for k, v in checkpoint["model_trainable"].items()
++                    if k in current_state and current_state[k].shape == v.shape
++                }
++                current_state.update(compatible_trainable)
++                self.model.load_state_dict(current_state, strict=True)
++                if get_rank() == 0:
++                    skipped = len(checkpoint["model_trainable"]) - len(compatible_trainable)
++                    print(
++                        f"auto-resumed {len(compatible_trainable)} trainable tensors from lightweight checkpoint, skipped {skipped}"
++                    )
++            else:
++                raise KeyError("checkpoint must contain either 'model' or 'model_trainable'")
+             if config.enable_ema:
+                 self.ema.load_state_dict(checkpoint["ema"])
+             self.opt.load_state_dict(checkpoint["opt"])
+@@ -321,6 +551,143 @@ class Trainer:
+         if config.distributed:
+             self.model = DDP( self.model, device_ids=[config.local_rank], output_device=config.local_rank, broadcast_buffers=False )
+ 
++    def get_graph_named_parameters(self):
++        model_wo_wrapper = self.model.module if self.config.distributed else self.model
++        position_net = getattr(model_wo_wrapper, "position_net", None)
++        if position_net is None:
++            return []
++
++        graph_prefixes = (
++            "gat_layers.",
++            "graph_gate",
++            "graph_adapter.",
++            "relation_geo_predictor.",
++            "relation_visual_predictor.",
++            "relation_predicate_predictor.",
++            "graph_visual_projector.",
++        )
++        named_params = []
++        for name, param in position_net.named_parameters():
++            if any(name.startswith(prefix) for prefix in graph_prefixes):
++                named_params.append((name, param))
++        return named_params
++
++    def snapshot_graph_parameters(self):
++        if not self.graph_stats_enabled:
++            return
++        self.graph_param_snapshot = {
++            name: param.detach().float().cpu().clone()
++            for name, param in self.get_graph_named_parameters()
++        }
++
++    def log_graph_stats(self):
++        if (not self.graph_stats_enabled) or self.writer is None:
++            return
++
++        named_params = self.get_graph_named_parameters()
++        if len(named_params) == 0:
++            return
++
++        param_norm_sq = 0.0
++        grad_norm_sq = 0.0
++        update_norm_sq = 0.0
++        grad_abs_mean_values = []
++        update_abs_mean_values = []
++
++        for name, param in named_params:
++            param_data = param.detach().float()
++            param_norm_sq += float(param_data.pow(2).sum().item())
++
++            if param.grad is not None:
++                grad_data = param.grad.detach().float()
++                grad_norm_sq += float(grad_data.pow(2).sum().item())
++                grad_abs_mean_values.append(float(grad_data.abs().mean().item()))
++
++            if self.graph_param_snapshot is not None and name in self.graph_param_snapshot:
++                prev = self.graph_param_snapshot[name].to(param_data.device)
++                delta = param_data - prev
++                update_norm_sq += float(delta.pow(2).sum().item())
++                update_abs_mean_values.append(float(delta.abs().mean().item()))
++
++        self.writer.add_scalar("graph_stats/param_norm", math.sqrt(max(param_norm_sq, 0.0)), self.iter_idx + 1)
++        self.writer.add_scalar("graph_stats/grad_norm", math.sqrt(max(grad_norm_sq, 0.0)), self.iter_idx + 1)
++        self.writer.add_scalar("graph_stats/update_norm", math.sqrt(max(update_norm_sq, 0.0)), self.iter_idx + 1)
++
++        if grad_abs_mean_values:
++            self.writer.add_scalar(
++                "graph_stats/grad_abs_mean",
++                sum(grad_abs_mean_values) / len(grad_abs_mean_values),
++                self.iter_idx + 1,
++            )
++        if update_abs_mean_values:
++            self.writer.add_scalar(
++                "graph_stats/update_abs_mean",
++                sum(update_abs_mean_values) / len(update_abs_mean_values),
++                self.iter_idx + 1,
++            )
++
++        model_wo_wrapper = self.model.module if self.config.distributed else self.model
++        position_net = getattr(model_wo_wrapper, "position_net", None)
++        graph_gate = getattr(position_net, "graph_gate", None) if position_net is not None else None
++        if graph_gate is not None:
++            self.writer.add_scalar(
++                "graph_stats/graph_gate_sigmoid",
++                torch.sigmoid(graph_gate.detach()).item(),
++                self.iter_idx + 1,
++            )
++
++        for name, param in named_params:
++            safe_name = name.replace(".", "/")
++            self.writer.add_scalar(
++                f"graph_stats/per_param/{safe_name}_param_norm",
++                param.detach().float().norm().item(),
++                self.iter_idx + 1,
++            )
++            if param.grad is not None:
++                self.writer.add_scalar(
++                    f"graph_stats/per_param/{safe_name}_grad_norm",
++                    param.grad.detach().float().norm().item(),
++                    self.iter_idx + 1,
++                )
++
++
++    @torch.no_grad()
++    def encode_grounding_text_features(self, texts):
++        _, pooler_output = self.text_encoder.encode(texts, return_pooler_output=True)
++        return pooler_output
++
++
++    @torch.no_grad()
++    def ensure_scene_graph_text_embeddings(self, batch):
++        batch_size = batch["image"].shape[0]
++
++        object_texts = normalize_collated_text_grid(batch.get("object_texts"), batch_size)
++        if object_texts:
++            max_boxes = batch["boxes"].shape[1]
++            padded_object_texts = []
++            for row in object_texts:
++                padded_row = list(row[:max_boxes])
++                if len(padded_row) < max_boxes:
++                    padded_row.extend([""] * (max_boxes - len(padded_row)))
++                padded_object_texts.append(padded_row)
++
++            flat_object_texts = [text if text else "" for row in padded_object_texts for text in row]
++            object_embeddings = self.encode_grounding_text_features(flat_object_texts)
++            batch["text_embeddings"] = object_embeddings.view(batch_size, max_boxes, -1)
++
++        relation_texts = normalize_collated_text_grid(batch.get("relation_texts"), batch_size)
++        if relation_texts:
++            max_relations = batch["relation_edges"].shape[1]
++            padded_relation_texts = []
++            for row in relation_texts:
++                padded_row = list(row[:max_relations])
++                if len(padded_row) < max_relations:
++                    padded_row.extend([""] * (max_relations - len(padded_row)))
++                padded_relation_texts.append(padded_row)
++
++            flat_relation_texts = [text if text else "" for row in padded_relation_texts for text in row]
++            relation_embeddings = self.encode_grounding_text_features(flat_relation_texts)
++            batch["relation_embeddings"] = relation_embeddings.view(batch_size, max_relations, -1)
+ 
+ 
+ 
+@@ -351,22 +718,385 @@ class Trainer:
+ 
+ 
+     def run_one_step(self, batch):
+-        x_start, t, context, inpainting_extra_input, grounding_extra_input = self.get_input(batch)
+-        noise = torch.randn_like(x_start)
+-        x_noisy = self.diffusion.q_sample(x_start=x_start, t=t, noise=noise)
+-
++        self.ensure_scene_graph_text_embeddings(batch)
+         grounding_input = self.grounding_tokenizer_input.prepare(batch)
+-        input = dict(x=x_noisy, 
+-                    timesteps=t, 
+-                    context=context, 
+-                    inpainting_extra_input=inpainting_extra_input,
+-                    grounding_extra_input=grounding_extra_input,
+-                    grounding_input=grounding_input)
+-        model_output = self.model(input)
+-        
+-        loss = torch.nn.functional.mse_loss(model_output, noise) * self.l_simple_weight
+-
+-        self.loss_dict = {"loss": loss.item()}
++        diffusion_loss_weight = float(getattr(self.config, "diffusion_loss_weight", 1.0))
++        if diffusion_loss_weight > 0:
++            x_start, t, context, inpainting_extra_input, grounding_extra_input = self.get_input(batch)
++            noise = torch.randn_like(x_start)
++            x_noisy = self.diffusion.q_sample(x_start=x_start, t=t, noise=noise)
++
++            input = dict(x=x_noisy,
++                        timesteps=t,
++                        context=context,
++                        inpainting_extra_input=inpainting_extra_input,
++                        grounding_extra_input=grounding_extra_input,
++                        grounding_input=grounding_input)
++            model_output = self.model(input)
++            diffusion_loss = torch.nn.functional.mse_loss(model_output, noise) * self.l_simple_weight
++        else:
++            x_start = self.autoencoder.encode(batch["image"])
++            diffusion_loss = x_start.new_tensor(0.0)
++
++        loss = diffusion_loss * diffusion_loss_weight
++        self.loss_dict = {"loss": loss.item(), "diffusion_loss": diffusion_loss.item()}
++
++        object_align_loss_weight = getattr(self.config, "object_align_loss_weight", 0.0)
++        if object_align_loss_weight > 0:
++            object_tokens = self.model.position_net(**grounding_input)
++            positive_embeddings = grounding_input["positive_embeddings"].detach()
++            masks = grounding_input["masks"].to(dtype=object_tokens.dtype)
++            object_tokens = torch.nn.functional.normalize(object_tokens, dim=-1)
++            positive_embeddings = torch.nn.functional.normalize(positive_embeddings, dim=-1)
++            per_object_align = 1 - (object_tokens * positive_embeddings).sum(dim=-1)
++            object_align_loss = (per_object_align * masks).sum() / masks.sum().clamp(min=1)
++            loss = loss + object_align_loss_weight * object_align_loss
++            self.loss_dict = {
++                "loss": loss.item(),
++                "diffusion_loss": diffusion_loss.item(),
++                "object_align_loss": object_align_loss.item(),
++            }
++
++        spatial_consistency_loss_weight = getattr(self.config, "spatial_consistency_loss_weight", 0.0)
++        if spatial_consistency_loss_weight > 0:
++            spatial_margin = getattr(self.config, "spatial_consistency_margin", 0.05)
++            positive_embeddings = grounding_input["positive_embeddings"].detach()
++            masks = grounding_input["masks"].to(dtype=positive_embeddings.dtype)
++
++            correct_tokens = self.model.position_net(**grounding_input)
++            shuffled_input = dict(grounding_input)
++            shuffled_input["boxes"] = torch.roll(grounding_input["boxes"], shifts=1, dims=1)
++            wrong_tokens = self.model.position_net(**shuffled_input)
++
++            correct_tokens = torch.nn.functional.normalize(correct_tokens, dim=-1)
++            wrong_tokens = torch.nn.functional.normalize(wrong_tokens, dim=-1)
++            positive_embeddings = torch.nn.functional.normalize(positive_embeddings, dim=-1)
++            positive_score = (correct_tokens * positive_embeddings).sum(dim=-1)
++            negative_score = (wrong_tokens * positive_embeddings).sum(dim=-1)
++            per_object_spatial = torch.relu(spatial_margin + negative_score - positive_score)
++            spatial_consistency_loss = (per_object_spatial * masks).sum() / masks.sum().clamp(min=1)
++            loss = loss + spatial_consistency_loss_weight * spatial_consistency_loss
++            self.loss_dict.update({
++                "loss": loss.item(),
++                "spatial_consistency_loss": spatial_consistency_loss.item(),
++            })
++
++        object_box_contrastive_loss_weight = getattr(self.config, "object_box_contrastive_loss_weight", 0.0)
++        if object_box_contrastive_loss_weight > 0:
++            temperature = getattr(self.config, "contrastive_temperature", 0.07)
++            num_negatives = int(getattr(self.config, "object_box_contrastive_negatives", 3))
++            positive_embeddings = torch.nn.functional.normalize(grounding_input["positive_embeddings"].detach(), dim=-1)
++            masks = grounding_input["masks"].to(dtype=positive_embeddings.dtype)
++            correct_tokens = torch.nn.functional.normalize(self.model.position_net(**grounding_input), dim=-1)
++            positive_score = (correct_tokens * positive_embeddings).sum(dim=-1, keepdim=True)
++
++            negative_scores = []
++            for shift in range(1, num_negatives + 1):
++                shuffled_input = dict(grounding_input)
++                shuffled_input["boxes"] = torch.roll(grounding_input["boxes"], shifts=shift, dims=1)
++                wrong_tokens = torch.nn.functional.normalize(self.model.position_net(**shuffled_input), dim=-1)
++                negative_scores.append((wrong_tokens * positive_embeddings).sum(dim=-1, keepdim=True))
++
++            logits = torch.cat([positive_score] + negative_scores, dim=-1) / temperature
++            labels = torch.zeros(logits.shape[:-1], dtype=torch.long, device=logits.device)
++            per_object_contrast = torch.nn.functional.cross_entropy(
++                logits.view(-1, logits.shape[-1]),
++                labels.view(-1),
++                reduction="none",
++            ).view_as(labels)
++            object_box_contrastive_loss = (per_object_contrast * masks).sum() / masks.sum().clamp(min=1)
++            loss = loss + object_box_contrastive_loss_weight * object_box_contrastive_loss
++            self.loss_dict.update({
++                "loss": loss.item(),
++                "object_box_contrastive_loss": object_box_contrastive_loss.item(),
++            })
++
++        relation_contrastive_loss_weight = getattr(self.config, "relation_contrastive_loss_weight", 0.0)
++        if relation_contrastive_loss_weight > 0 and "relation_edges" in grounding_input and "relation_embeddings" in grounding_input:
++            temperature = getattr(self.config, "contrastive_temperature", 0.07)
++            relation_edges = grounding_input["relation_edges"].long()
++            relation_embeddings = grounding_input["relation_embeddings"].detach()
++            relation_masks = grounding_input.get("relation_masks")
++            if relation_masks is not None and relation_edges.shape[1] > 1:
++                object_tokens = torch.nn.functional.normalize(self.model.position_net(**grounding_input), dim=-1)
++                relation_embeddings = torch.nn.functional.normalize(relation_embeddings, dim=-1)
++                node_count = object_tokens.shape[1]
++                edge_index = relation_edges.clamp(min=0, max=max(node_count - 1, 0))
++                src = edge_index[..., 0]
++                dst = edge_index[..., 1]
++                batch_idx = torch.arange(object_tokens.shape[0], device=object_tokens.device)[:, None].expand_as(src)
++                pair_tokens = torch.nn.functional.normalize(
++                    object_tokens[batch_idx, src] + object_tokens[batch_idx, dst],
++                    dim=-1,
++                )
++                logits = torch.matmul(pair_tokens, relation_embeddings.transpose(1, 2)) / temperature
++                labels = torch.arange(logits.shape[1], device=logits.device).unsqueeze(0).expand(logits.shape[0], -1)
++                per_relation_contrast = torch.nn.functional.cross_entropy(
++                    logits.view(-1, logits.shape[-1]),
++                    labels.reshape(-1),
++                    reduction="none",
++                ).view(logits.shape[:2])
++                relation_masks = relation_masks.to(dtype=per_relation_contrast.dtype)
++                relation_contrastive_loss = (per_relation_contrast * relation_masks).sum() / relation_masks.sum().clamp(min=1)
++                loss = loss + relation_contrastive_loss_weight * relation_contrastive_loss
++                self.loss_dict.update({
++                    "loss": loss.item(),
++                    "relation_contrastive_loss": relation_contrastive_loss.item(),
++                })
++
++        relation_geo_consistency_loss_weight = getattr(self.config, "relation_geo_consistency_loss_weight", 0.0)
++        has_relation_geo_inputs = (
++            "relation_edges" in grounding_input
++            and "relation_embeddings" in grounding_input
++            and "relation_geo_features" in grounding_input
++        )
++        if relation_geo_consistency_loss_weight > 0 and has_relation_geo_inputs:
++            relation_edges = grounding_input["relation_edges"].long()
++            relation_masks = grounding_input.get("relation_masks")
++            relation_embeddings = grounding_input["relation_embeddings"].detach()
++            if relation_masks is not None and relation_edges.shape[1] > 0:
++                margin = getattr(self.config, "relation_geo_consistency_margin", 0.05)
++                filter_predicates = bool(getattr(self.config, "relation_geo_consistency_filter_predicates", True))
++
++                correct_tokens = torch.nn.functional.normalize(self.model.position_net(**grounding_input), dim=-1)
++                corrupted_input = dict(grounding_input)
++                corrupted_input["relation_geo_features"] = corrupt_relation_geo_features(
++                    grounding_input["relation_geo_features"]
++                )
++                wrong_tokens = torch.nn.functional.normalize(self.model.position_net(**corrupted_input), dim=-1)
++
++                relation_embeddings = torch.nn.functional.normalize(relation_embeddings, dim=-1)
++                node_count = correct_tokens.shape[1]
++                edge_index = relation_edges.clamp(min=0, max=max(node_count - 1, 0))
++                src = edge_index[..., 0]
++                dst = edge_index[..., 1]
++                batch_idx = torch.arange(correct_tokens.shape[0], device=correct_tokens.device)[:, None].expand_as(src)
++
++                correct_pairs = torch.nn.functional.normalize(
++                    correct_tokens[batch_idx, src] + correct_tokens[batch_idx, dst],
++                    dim=-1,
++                )
++                wrong_pairs = torch.nn.functional.normalize(
++                    wrong_tokens[batch_idx, src] + wrong_tokens[batch_idx, dst],
++                    dim=-1,
++                )
++                positive_score = (correct_pairs * relation_embeddings).sum(dim=-1)
++                negative_score = (wrong_pairs * relation_embeddings).sum(dim=-1)
++                per_relation_geo = torch.relu(margin + negative_score - positive_score)
++
++                relation_masks = relation_masks.to(dtype=per_relation_geo.dtype)
++                if filter_predicates:
++                    geometry_mask = relation_text_geometry_mask(
++                        batch.get("relation_texts"),
++                        batch_size=correct_tokens.shape[0],
++                        device=per_relation_geo.device,
++                        dtype=per_relation_geo.dtype,
++                    )
++                    if geometry_mask is not None and (geometry_mask * relation_masks).sum() > 0:
++                        relation_masks = relation_masks * geometry_mask
++
++                relation_geo_consistency_loss = (
++                    per_relation_geo * relation_masks
++                ).sum() / relation_masks.sum().clamp(min=1)
++                loss = loss + relation_geo_consistency_loss_weight * relation_geo_consistency_loss
++                self.loss_dict.update({
++                    "loss": loss.item(),
++                    "relation_geo_consistency_loss": relation_geo_consistency_loss.item(),
++                })
++
++        relation_geo_prediction_loss_weight = getattr(self.config, "relation_geo_prediction_loss_weight", 0.0)
++        position_net = self.model.position_net
++        has_relation_geo_predictor = (
++            hasattr(position_net, "predict_relation_geo")
++            and getattr(position_net, "relation_geo_predictor", None) is not None
++        )
++        has_relation_visual_predictor = (
++            hasattr(position_net, "predict_relation_visual")
++            and getattr(position_net, "relation_visual_predictor", None) is not None
++        )
++        if relation_geo_prediction_loss_weight > 0 and has_relation_geo_inputs and has_relation_geo_predictor:
++            relation_edges = grounding_input["relation_edges"].long()
++            relation_masks = grounding_input.get("relation_masks")
++            relation_embeddings = grounding_input["relation_embeddings"].detach()
++            relation_geo_features = grounding_input["relation_geo_features"].detach()
++            if relation_masks is not None and relation_edges.shape[1] > 0:
++                object_tokens = self.model.position_net(**grounding_input)
++                pred_geo = self.model.position_net.predict_relation_geo(
++                    object_tokens,
++                    relation_edges,
++                    relation_embeddings=relation_embeddings,
++                )
++                target_geo = relation_geo_features.to(dtype=pred_geo.dtype)
++                beta = getattr(self.config, "relation_geo_prediction_beta", 0.1)
++                per_relation_pred = torch.nn.functional.smooth_l1_loss(
++                    pred_geo,
++                    target_geo,
++                    reduction="none",
++                    beta=beta,
++                ).mean(dim=-1)
++
++                relation_masks = relation_masks.to(dtype=per_relation_pred.dtype)
++                if bool(getattr(self.config, "relation_geo_prediction_filter_predicates", True)):
++                    geometry_mask = relation_text_geometry_mask(
++                        batch.get("relation_texts"),
++                        batch_size=object_tokens.shape[0],
++                        device=per_relation_pred.device,
++                        dtype=per_relation_pred.dtype,
++                    )
++                    if geometry_mask is not None and (geometry_mask * relation_masks).sum() > 0:
++                        relation_masks = relation_masks * geometry_mask
++
++                relation_geo_prediction_loss = (
++                    per_relation_pred * relation_masks
++                ).sum() / relation_masks.sum().clamp(min=1)
++                loss = loss + relation_geo_prediction_loss_weight * relation_geo_prediction_loss
++                self.loss_dict.update({
++                    "loss": loss.item(),
++                    "relation_geo_prediction_loss": relation_geo_prediction_loss.item(),
++                })
++
++        relation_visual_align_loss_weight = getattr(self.config, "relation_visual_align_loss_weight", 0.0)
++        if relation_visual_align_loss_weight > 0 and has_relation_geo_inputs and has_relation_visual_predictor:
++            relation_edges = grounding_input["relation_edges"].long()
++            relation_masks = grounding_input.get("relation_masks")
++            relation_embeddings = grounding_input["relation_embeddings"].detach()
++            if relation_masks is not None and relation_edges.shape[1] > 0:
++                output_size = int(getattr(self.config, "relation_visual_align_output_size", 4))
++                target_visual, valid_mask = extract_relation_union_latent_features(
++                    x_start,
++                    grounding_input["boxes"],
++                    relation_edges,
++                    relation_masks,
++                    output_size=output_size,
++                )
++                expected_dim = getattr(position_net, "relation_visual_dim", None)
++                if (
++                    target_visual is not None
++                    and expected_dim is not None
++                    and target_visual.shape[-1] == expected_dim
++                ):
++                    object_tokens = self.model.position_net(**grounding_input)
++                    pred_visual = self.model.position_net.predict_relation_visual(
++                        object_tokens,
++                        relation_edges,
++                        relation_embeddings=relation_embeddings,
++                    )
++                    pred_visual = pred_visual[valid_mask]
++                    pred_visual = torch.nn.functional.normalize(pred_visual, dim=-1)
++                    target_visual = torch.nn.functional.normalize(target_visual, dim=-1)
++                    per_relation_visual = 1 - (pred_visual * target_visual).sum(dim=-1)
++
++                    relation_weights = relation_masks[valid_mask].to(dtype=per_relation_visual.dtype)
++                    if bool(getattr(self.config, "relation_visual_align_filter_predicates", False)):
++                        relation_filter = relation_text_geometry_mask(
++                            batch.get("relation_texts"),
++                            batch_size=object_tokens.shape[0],
++                            device=per_relation_visual.device,
++                            dtype=per_relation_visual.dtype,
++                        )
++                        if relation_filter is not None:
++                            relation_weights = relation_weights * relation_filter[valid_mask]
++
++                    if relation_weights.sum() > 0:
++                        relation_visual_align_loss = (
++                            per_relation_visual * relation_weights
++                        ).sum() / relation_weights.sum().clamp(min=1)
++                        loss = loss + relation_visual_align_loss_weight * relation_visual_align_loss
++                        self.loss_dict.update({
++                            "loss": loss.item(),
++                            "relation_visual_align_loss": relation_visual_align_loss.item(),
++                        })
++
++        graph_image_align_loss_weight = getattr(self.config, "graph_image_align_loss_weight", 0.0)
++        has_graph_visual_predictor = (
++            hasattr(position_net, "predict_graph_visual")
++            and getattr(position_net, "graph_visual_projector", None) is not None
++        )
++        if graph_image_align_loss_weight > 0 and has_graph_visual_predictor:
++            object_tokens = self.model.position_net(**grounding_input)
++            graph_pred = self.model.position_net.predict_graph_visual(
++                object_tokens,
++                grounding_input["masks"],
++            )
++            output_size = int(getattr(self.config, "graph_image_align_output_size", 4))
++            graph_target = extract_global_latent_features(x_start, output_size=output_size)
++            if graph_pred.shape[-1] == graph_target.shape[-1]:
++                graph_pred = torch.nn.functional.normalize(graph_pred, dim=-1)
++                graph_target = torch.nn.functional.normalize(graph_target, dim=-1)
++                graph_image_align_loss = 1 - (graph_pred * graph_target).sum(dim=-1).mean()
++                loss = loss + graph_image_align_loss_weight * graph_image_align_loss
++                self.loss_dict.update({
++                    "loss": loss.item(),
++                    "graph_image_align_loss": graph_image_align_loss.item(),
++                })
++
++        masked_relation_loss_weight = getattr(self.config, "masked_relation_loss_weight", 0.0)
++        has_relation_predicate_predictor = (
++            hasattr(position_net, "predict_relation_logits")
++            and getattr(position_net, "relation_predicate_predictor", None) is not None
++        )
++        if masked_relation_loss_weight > 0 and has_relation_geo_inputs and has_relation_predicate_predictor:
++            relation_edges = grounding_input["relation_edges"].long()
++            relation_masks = grounding_input.get("relation_masks")
++            relation_embeddings = grounding_input["relation_embeddings"].detach()
++            relation_geo_features = grounding_input["relation_geo_features"].detach()
++            relation_label_ids = grounding_input.get("relation_label_ids")
++            if (
++                relation_masks is not None
++                and relation_label_ids is not None
++                and relation_edges.shape[1] > 0
++            ):
++                mask_ratio = float(getattr(self.config, "masked_relation_ratio", 0.15))
++                masked_embeddings, masked_geo_features, masked_edges = mask_relation_inputs(
++                    relation_embeddings,
++                    relation_geo_features,
++                    relation_masks,
++                    mask_ratio,
++                )
++                if masked_edges.sum() > 0:
++                    masked_input = dict(grounding_input)
++                    masked_input["relation_embeddings"] = masked_embeddings
++                    masked_input["relation_geo_features"] = masked_geo_features
++                    object_tokens = self.model.position_net(**masked_input)
++                    relation_logits = self.model.position_net.predict_relation_logits(
++                        object_tokens,
++                        relation_edges,
++                        relation_embeddings=masked_embeddings,
++                    )
++                    relation_geo_pred = self.model.position_net.predict_relation_geo(
++                        object_tokens,
++                        relation_edges,
++                        relation_embeddings=masked_embeddings,
++                    )
++                    masked_labels = relation_label_ids.long()[masked_edges]
++                    masked_logits = relation_logits[masked_edges]
++                    valid_label_mask = (masked_labels >= 0) & (masked_labels < masked_logits.shape[-1])
++                    if valid_label_mask.any():
++                        masked_labels = masked_labels[valid_label_mask]
++                        masked_logits = masked_logits[valid_label_mask]
++                        masked_relation_cls_loss = torch.nn.functional.cross_entropy(
++                            masked_logits,
++                            masked_labels,
++                        )
++                        masked_geo_target = relation_geo_features[masked_edges][valid_label_mask].to(
++                            dtype=relation_geo_pred.dtype
++                        )
++                        beta = getattr(self.config, "relation_geo_prediction_beta", 0.1)
++                        masked_relation_geo_loss = torch.nn.functional.smooth_l1_loss(
++                            relation_geo_pred[masked_edges][valid_label_mask],
++                            masked_geo_target,
++                            reduction="mean",
++                            beta=beta,
++                        )
++                        masked_relation_geo_weight = float(getattr(self.config, "masked_relation_geo_weight", 1.0))
++                        masked_relation_loss = masked_relation_cls_loss + masked_relation_geo_weight * masked_relation_geo_loss
++                        loss = loss + masked_relation_loss_weight * masked_relation_loss
++                        self.loss_dict.update({
++                            "loss": loss.item(),
++                            "masked_relation_cls_loss": masked_relation_cls_loss.item(),
++                            "masked_relation_geo_loss": masked_relation_geo_loss.item(),
++                            "masked_relation_loss": masked_relation_loss.item(),
++                        })
+ 
+         return loss 
+         
+@@ -384,9 +1114,14 @@ class Trainer:
+             batch_to_device(batch, self.device)
+ 
+             loss = self.run_one_step(batch)
++            should_log_graph_stats = self.graph_stats_enabled and (iter_idx % self.graph_stats_interval == 0)
++            if should_log_graph_stats:
++                self.snapshot_graph_parameters()
+             loss.backward()
+             self.opt.step() 
+             self.scheduler.step()
++            if should_log_graph_stats and get_rank() == 0:
++                self.log_graph_stats()
+             if self.config.enable_ema:
+                 update_ema(self.ema_params, self.master_params, self.config.ema_rate)
+ 
+@@ -394,7 +1129,7 @@ class Trainer:
+             if (get_rank() == 0):
+                 if (iter_idx % 10 == 0):
+                     self.log_loss() 
+-                if (iter_idx == 0)  or  ( iter_idx % self.config.save_every_iters == 0 )  or  (iter_idx == self.config.total_iters-1):
++                if (not getattr(self.config, "disable_saving_in_training", False)) and ((iter_idx == 0)  or  ( iter_idx % self.config.save_every_iters == 0 )  or  (iter_idx == self.config.total_iters-1)):
+                     self.save_ckpt_and_result()
+             synchronize()
+ 
+@@ -421,6 +1156,7 @@ class Trainer:
+             batch_here = self.config.batch_size
+             batch = sub_batch( next(self.loader_train), batch_here)
+             batch_to_device(batch, self.device)
++            self.ensure_scene_graph_text_embeddings(batch)
+ 
+             
+             if "boxes" in batch:
+@@ -469,18 +1205,31 @@ class Trainer:
+             masked_real_image =  batch["image"]*torch.nn.functional.interpolate(inpainting_mask, size=(512, 512)) if self.config.inpaint_mode else None
+             self.image_caption_saver(samples, real_images_with_box_drawing,  masked_real_image, batch["caption"], iter_name)
+ 
+-        ckpt = dict(model = model_wo_wrapper.state_dict(),
+-                    text_encoder = self.text_encoder.state_dict(),
+-                    autoencoder = self.autoencoder.state_dict(),
+-                    diffusion = self.diffusion.state_dict(),
+-                    opt = self.opt.state_dict(),
+-                    scheduler= self.scheduler.state_dict(),
+-                    iters = self.iter_idx+1,
+-                    config_dict=self.config_dict,
+-        )
+-        if self.config.enable_ema:
+-            ckpt["ema"] = self.ema.state_dict()
++        if getattr(self.config, "save_trainable_only", False):
++            full_model_state = model_wo_wrapper.state_dict()
++            trainable_name_set = set(self.trainable_names)
++            model_trainable = {
++                k: v.detach().cpu()
++                for k, v in full_model_state.items()
++                if k in trainable_name_set
++            }
++            ckpt = dict(model_trainable=model_trainable,
++                        opt=self.opt.state_dict(),
++                        scheduler=self.scheduler.state_dict(),
++                        iters=self.iter_idx+1,
++                        config_dict=self.config_dict,
++                        trainable_names=self.trainable_names)
++        else:
++            ckpt = dict(model = model_wo_wrapper.state_dict(),
++                        text_encoder = self.text_encoder.state_dict(),
++                        autoencoder = self.autoencoder.state_dict(),
++                        diffusion = self.diffusion.state_dict(),
++                        opt = self.opt.state_dict(),
++                        scheduler= self.scheduler.state_dict(),
++                        iters = self.iter_idx+1,
++                        config_dict=self.config_dict,
++            )
++            if self.config.enable_ema:
++                ckpt["ema"] = self.ema.state_dict()
+         torch.save( ckpt, os.path.join(self.name, "checkpoint_"+str(iter_name).zfill(8)+".pth") )
+         torch.save( ckpt, os.path.join(self.name, "checkpoint_latest.pth") )
+-
+-

@@ -157,12 +157,27 @@ class SelfAttention(nn.Module):
         inner_dim = dim_head * heads
         self.scale = dim_head ** -0.5
         self.heads = heads
+        self.record_attention = False
+        self.record_attention_detached = True
+        self.last_attention = None
 
         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
         self.to_k = nn.Linear(query_dim, inner_dim, bias=False)
         self.to_v = nn.Linear(query_dim, inner_dim, bias=False)
 
         self.to_out = nn.Sequential(nn.Linear(inner_dim, query_dim), nn.Dropout(dropout) )
+
+    def set_attention_recording(self, enabled=True, detach=True):
+        self.record_attention = bool(enabled)
+        self.record_attention_detached = bool(detach)
+        if not self.record_attention:
+            self.clear_last_attention()
+
+    def clear_last_attention(self):
+        self.last_attention = None
+
+    def get_last_attention(self):
+        return self.last_attention
 
     def forward(self, x):
         q = self.to_q(x) # B*N*(H*C)
@@ -179,6 +194,11 @@ class SelfAttention(nn.Module):
 
         sim = torch.einsum('b i c, b j c -> b i j', q, k) * self.scale  # (B*H)*N*N
         attn = sim.softmax(dim=-1) # (B*H)*N*N
+        if self.record_attention:
+            recorded_attention = attn.view(B,H,N,N)
+            if self.record_attention_detached:
+                recorded_attention = recorded_attention.detach()
+            self.last_attention = recorded_attention
 
         out = torch.einsum('b i j, b j c -> b i c', attn, v) # (B*H)*N*C
         out = out.view(B,H,N,C).permute(0,2,1,3).reshape(B,N,(H*C)) # B*N*(H*C)
@@ -231,11 +251,31 @@ class GatedSelfAttentionDense(nn.Module):
         # this can be useful: we can externally change magnitude of tanh(alpha)
         # for example, when it is set to 0, then the entire model is same as original one 
         self.scale = 1  
+        self.last_n_visual = None
+        self.last_n_grounding = None
 
+    def set_attention_recording(self, enabled=True, detach=True):
+        self.attn.set_attention_recording(enabled, detach=detach)
+
+    def clear_last_attention(self):
+        self.attn.clear_last_attention()
+
+    def get_last_attention(self):
+        return self.attn.get_last_attention()
+
+    def get_visual_to_grounding_attention(self):
+        attn = self.get_last_attention()
+        if attn is None or self.last_n_visual is None or self.last_n_grounding is None:
+            return None
+        start = int(self.last_n_visual)
+        end = start + int(self.last_n_grounding)
+        return attn[:, :, :start, start:end]
 
     def forward(self, x, objs):
 
         N_visual = x.shape[1]
+        self.last_n_visual = int(N_visual)
+        self.last_n_grounding = int(objs.shape[1])
         objs = self.linear(objs)
 
         x = x + self.scale*torch.tanh(self.alpha_attn) * self.attn(  self.norm1(torch.cat([x,objs],dim=1))  )[:,0:N_visual,:]

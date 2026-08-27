@@ -1,156 +1,102 @@
-import os 
+import os
+
 
 class DatasetCatalog:
     def __init__(self, ROOT):
-
-
-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
-
-
-        self.VGGrounding = {   
+        self.VGGrounding = {
             "target": "dataset.tsv_dataset.TSVDataset",
             "train_params": dict(
-                tsv_path=os.path.join(ROOT,'GROUNDING/gqa/tsv/train-00.tsv'),
+                tsv_path=os.path.join(ROOT, "GROUNDING/gqa/tsv/train-00.tsv"),
             ),
         }
 
-        self.VGSceneGraphRaw = {
+        self.VGSceneGraph = {
             "target": "dataset.dataset_vg_scene_graph.VGSceneGraphDataset",
-            "train_params": dict(
-                image_root=os.path.join(ROOT, 'VG/images'),
-                scene_graphs_json=os.path.join(ROOT, 'VG/annotations/scene_graphs.json'),
-            ),
+            "train_params": dict(),
         }
-
-        self.VGSceneGraphFixedSplit = {
-            "target": "dataset.dataset_vg_fixedsplit_scene_graph.VGFixedSplitSceneGraphDataset",
-            "train_params": dict(
-                h5_path=os.path.join(ROOT, 'fixed_split_work/datasets/vg/train.h5'),
-                vocab_path=os.path.join(ROOT, 'fixed_split_work/datasets/vg/vocab.json'),
-                image_root=os.path.join(ROOT, 'fixed_split_work/datasets/vg/images'),
-                split_name='train',
-            ),
-        }
-
-
-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
-
 
         self.FlickrGrounding = {
             "target": "dataset.tsv_dataset.TSVDataset",
-            "train_params":dict(
-                tsv_path=os.path.join(ROOT,'GROUNDING/flickr30k/tsv/train-00.tsv'),
+            "train_params": dict(
+                tsv_path=os.path.join(ROOT, "GROUNDING/flickr30k/tsv/train-00.tsv"),
             ),
         }
 
-
-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
-
-        self.SBUGrounding = {   
+        self.SBUGrounding = {
             "target": "dataset.tsv_dataset.TSVDataset",
-            "train_params":dict(
-                tsv_path=os.path.join(ROOT,'GROUNDING/SBU/tsv/train-00.tsv'),
-            ),
-         }
-
-
-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
-
-
-        self.CC3MGrounding = {   
-            "target": "dataset.tsv_dataset.TSVDataset",
-            "train_params":dict(
-                tsv_path=os.path.join(ROOT,'GROUNDING/CC3M/tsv/train-00.tsv'),
+            "train_params": dict(
+                tsv_path=os.path.join(ROOT, "GROUNDING/SBU/tsv/train-00.tsv"),
             ),
         }
 
-
-
-
+        self.CC3MGrounding = {
+            "target": "dataset.tsv_dataset.TSVDataset",
+            "train_params": dict(
+                tsv_path=os.path.join(ROOT, "GROUNDING/CC3M/tsv/train-00.tsv"),
+            ),
+        }
 
         self.CC3MGroundingHed = {
             "target": "dataset.dataset_hed.HedDataset",
-            "train_params":dict(
-                tsv_path=os.path.join(ROOT,'GROUNDING/CC3M/tsv/train-00.tsv'),
-                hed_tsv_path=os.path.join(ROOT,'GROUNDING/CC3M/tsv_hed/train-00.tsv'),
+            "train_params": dict(
+                tsv_path=os.path.join(ROOT, "GROUNDING/CC3M/tsv/train-00.tsv"),
+                hed_tsv_path=os.path.join(ROOT, "GROUNDING/CC3M/tsv_hed/train-00.tsv"),
             ),
         }
-
 
         self.CC3MGroundingCanny = {
             "target": "dataset.dataset_canny.CannyDataset",
-            "train_params":dict(
-                tsv_path=os.path.join(ROOT,'GROUNDING/CC3M/tsv/train-00.tsv'),
-                canny_tsv_path=os.path.join(ROOT,'GROUNDING/CC3M/tsv_canny/train-00.tsv'),
+            "train_params": dict(
+                tsv_path=os.path.join(ROOT, "GROUNDING/CC3M/tsv/train-00.tsv"),
+                canny_tsv_path=os.path.join(ROOT, "GROUNDING/CC3M/tsv_canny/train-00.tsv"),
             ),
         }
-
 
         self.CC3MGroundingDepth = {
             "target": "dataset.dataset_depth.DepthDataset",
-            "train_params":dict(
-                tsv_path=os.path.join(ROOT,'GROUNDING/CC3M/tsv/train-00.tsv'),
-                depth_tsv_path=os.path.join(ROOT,'GROUNDING/CC3M/tsv_depth/train-00.tsv'),
+            "train_params": dict(
+                tsv_path=os.path.join(ROOT, "GROUNDING/CC3M/tsv/train-00.tsv"),
+                depth_tsv_path=os.path.join(ROOT, "GROUNDING/CC3M/tsv_depth/train-00.tsv"),
             ),
         }
 
-
-
-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
-
-
-        self.CC12MGrounding = {   
+        self.CC12MGrounding = {
             "target": "dataset.tsv_dataset.TSVDataset",
-            "train_params":dict(
-                tsv_path=os.path.join(ROOT,'GROUNDING/CC12M/tsv/train-00.tsv'),
+            "train_params": dict(
+                tsv_path=os.path.join(ROOT, "GROUNDING/CC12M/tsv/train-00.tsv"),
             ),
         }
 
-
-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
-
-        self.Obj365Detection = {   
+        self.Obj365Detection = {
             "target": "dataset.tsv_dataset.TSVDataset",
-            "train_params":dict(
-                tsv_path=os.path.join(ROOT,'OBJECTS365/tsv/train-00.tsv'),
+            "train_params": dict(
+                tsv_path=os.path.join(ROOT, "OBJECTS365/tsv/train-00.tsv"),
             ),
         }
 
-
-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
-
-        self.COCO2017Keypoint = {   
+        self.COCO2017Keypoint = {
             "target": "dataset.dataset_kp.KeypointDataset",
-            "train_params":dict(
-                image_root = os.path.join(ROOT,'COCO/images'),
-                keypoints_json_path = os.path.join(ROOT,'COCO/annotations2017/person_keypoints_train2017.json'),
-                caption_json_path = os.path.join(ROOT,'COCO/annotations2017/captions_train2017.json'),
+            "train_params": dict(
+                image_root=os.path.join(ROOT, "COCO/images"),
+                keypoints_json_path=os.path.join(ROOT, "COCO/annotations2017/person_keypoints_train2017.json"),
+                caption_json_path=os.path.join(ROOT, "COCO/annotations2017/captions_train2017.json"),
             ),
         }
 
-
-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
-
-        self.DIODENormal = {   
+        self.DIODENormal = {
             "target": "dataset.dataset_normal.NormalDataset",
-            "train_params":dict(
-                image_rootdir = os.path.join(ROOT,'normal/image_train'),
-                normal_rootdir = os.path.join(ROOT,'normal/normal_train'),
-                caption_path = os.path.join(ROOT,'normal/diode_cation.json'),
+            "train_params": dict(
+                image_rootdir=os.path.join(ROOT, "normal/image_train"),
+                normal_rootdir=os.path.join(ROOT, "normal/normal_train"),
+                caption_path=os.path.join(ROOT, "normal/diode_cation.json"),
             ),
         }
 
-
-        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
-
-        self.ADESemantic = {   
+        self.ADESemantic = {
             "target": "dataset.dataset_sem.SemanticDataset",
-            "train_params":dict(
-                image_rootdir = os.path.join(ROOT,'ADE/ADEChallengeData2016/images/training'),
-                sem_rootdir = os.path.join(ROOT,'ADE/ADEChallengeData2016/annotations/training'),
-                caption_path = os.path.join(ROOT,'ADE/ade_train_images_cation.json'),
+            "train_params": dict(
+                image_rootdir=os.path.join(ROOT, "ADE/ADEChallengeData2016/images/training"),
+                sem_rootdir=os.path.join(ROOT, "ADE/ADEChallengeData2016/annotations/training"),
+                caption_path=os.path.join(ROOT, "ADE/ade_train_images_cation.json"),
             ),
         }
-
-
-

@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Small diagnostic only: the ten manually reviewed samples whose clean graph
+# contains one visually supported spatial relation. This intentionally reports
+# no FID/IS/OOR and uses the current synced conditioning code.
+cd /root/autodl-tmp/GLIGEN
+
+export HF_ENDPOINT=https://hf-mirror.com
+export TRANSFORMERS_OFFLINE=1
+export HF_HUB_OFFLINE=1
+export BASE_CKPT=/root/autodl-tmp/GLIGEN/gligen_checkpoints/diffusion_pytorch_model.bin
+export MODEL_YAML=configs/vg_text_box_baseline.yaml
+export DATA_YAML=configs/vg_text_box_baseline.yaml
+unset GROUNDING_CKPT || true
+unset GRAPH_GATE_OVERRIDE || true
+
+export H5_PATH=/root/autodl-tmp/standard_sg2im_fresh_h5/test.h5
+export VOCAB_PATH=/root/autodl-tmp/standard_sg2im_fresh_h5/vocab.json
+export IMAGE_ROOT=/root/autodl-tmp/standard_sg2im_fresh_h5/images
+export SPLIT_NAME=test
+export SAMPLE_INDICES=1008,1048,1978,2022,2942,3530,3544,3651,4786,5000
+export NUM_SAMPLES=10
+export START_INDEX=0
+export SAMPLER=ddim
+export STEPS=50
+export GUIDANCE=3.0
+export GROUNDING_ALPHA_TYPE=1,0,0
+export SEED=20260713
+export SAVE_SIZE=256
+export EVAL_BATCH_SIZE=4
+export EVAL_TRANSFORM_MODE=gligen_center_crop
+export MAX_EVAL_OBJECTS=10
+export MAX_EVAL_RELATIONS=15
+export EVAL_SELECTION_POLICY=sg2im_relation_area
+export SAVE_SAMPLE_METADATA=1
+export RESTORE_BASE_FUSER=0
+export RUN_TAG="${RUN_TAG:-clean}"
+
+export CONDITIONING_POLICY=clean_spatial_v1
+export CAPTION_POLICY="${CAPTION_POLICY_OVERRIDE:-clean}"
+export CLEAN_MAX_OBJECTS=6
+export CLEAN_MAX_RELATIONS=1
+export CLEAN_MIN_BOX_AREA=0.0025
+export CLEAN_MIN_BOX_SIDE=0.035
+export CLEAN_RELATION_CORE_MIN_AREA=0.0015
+export CLEAN_DUPLICATE_IOU_THRESHOLD=0.85
+
+run_one() {
+  local name="$1"
+  if [[ -e "/root/autodl-tmp/GLIGEN/eval_outputs/${name}" ]]; then
+    echo "Refusing to overwrite existing output: ${name}" >&2
+    exit 2
+  fi
+  export OUT_DIR="/root/autodl-tmp/GLIGEN/eval_outputs/${name}"
+  echo "===== START ${name} $(date '+%F %T') ====="
+  /root/miniconda3/bin/python scripts/eval/generate_vg_fixedsplit_eval.py
+  echo "===== DONE ${name} $(date '+%F %T') ====="
+}
+
+export ENABLE_RELATION_GROUNDING_TOKENS=0
+export MAX_RELATION_GROUNDING_TOKENS=0
+run_one "clean10_rel_current_${RUN_TAG}_c_no_token_20260713"
+
+export ENABLE_RELATION_GROUNDING_TOKENS=1
+export MAX_RELATION_GROUNDING_TOKENS=1
+export RELATION_GROUNDING_TEMPLATE='{subject} {predicate} {object}'
+export RELATION_GROUNDING_ALLOWED_PREDICATES='on,on top of,under,below,above,inside,in,near,next to'
+export DEDUP_RELATION_GROUNDING_TOKENS=1
+export RELATION_GROUNDING_MASK_SCALE=0.5
+run_one "clean10_rel_current_${RUN_TAG}_d_token_s050_20260713"

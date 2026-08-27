@@ -9,6 +9,13 @@ import os
 import torch.multiprocessing as multiprocessing
 
 
+def seed_everything(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
 if __name__ == "__main__":
 
     multiprocessing.set_start_method('spawn')
@@ -25,8 +32,12 @@ if __name__ == "__main__":
 
     parser.add_argument("--base_learning_rate", type=float,  default=5e-5, help="")
     parser.add_argument("--weight_decay", type=float,  default=0.0, help="")
-    parser.add_argument("--warmup_steps", type=int,  default=10000, help="")
+    parser.add_argument("--warmup_steps", type=int,  default=100, help="")
     parser.add_argument("--scheduler_type", type=str,  default='constant', help="cosine or constant")
+    parser.add_argument("--graph_lr_multiplier", type=float, default=1.0,
+        help="Optional learning-rate multiplier for trainable scene-graph branch parameters.")
+    parser.add_argument("--graph_gate_lr_multiplier", type=float, default=1.0,
+        help="Optional learning-rate multiplier for position_net.graph_gate.")
     parser.add_argument("--batch_size", type=int,  default=2, help="")
     parser.add_argument("--workers", type=int,  default=1, help="")
     parser.add_argument("--official_ckpt_name", type=str,  default="sd-v1-4.ckpt", help="SD ckpt name and it is expected in DATA_ROOT, thus DATA_ROOT/official_ckpt_name must exists")
@@ -47,8 +58,14 @@ if __name__ == "__main__":
     parser.add_argument('--enable_ema', default=False, type=lambda x:x.lower() == "true")
     parser.add_argument('--freeze_fuser', default=False, type=lambda x:x.lower() == "true",
         help="If true, freeze GLIGEN gated fuser layers and train only grounding-related modules such as position_net.")
+    parser.add_argument(
+        '--fuser_train_mode',
+        choices=['full', 'gates_and_linear', 'gates_only', 'frozen'],
+        default=None,
+        help="Select all fuser parameters, alpha gates plus input projection, only alpha gates, or no fuser parameters.",
+    )
     parser.add_argument('--freeze_position_base', default=False, type=lambda x:x.lower() == "true",
-        help="If true, freeze position_net node_in/out MLP path and train only the scene-graph adapter branch.")
+        help="If true, freeze the GLIGEN-compatible position_net linears path and train only the scene-graph branch.")
     parser.add_argument("--ema_rate", type=float,  default=0.9999, help="")
     parser.add_argument("--total_iters", type=int,  default=500000, help="")
     parser.add_argument("--save_every_iters", type=int,  default=5000, help="")
@@ -77,6 +94,7 @@ if __name__ == "__main__":
     config = OmegaConf.load(args.yaml_file) 
     config.update( vars(args) )
     config.total_batch_size = config.batch_size * n_gpu
+    seed_everything(config.seed)
     if args.inpaint_mode:
         config.model.params.inpaint_mode = True
 
@@ -86,11 +104,6 @@ if __name__ == "__main__":
     trainer.start_training()
 
     # CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -m torch.distributed.launch --nproc_per_node=8 main.py  --yaml_file=configs/ade_sem.yaml  --DATA_ROOT=../../DATA   --batch_size=4
-
-
-
-
-
 
 
 

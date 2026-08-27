@@ -9,6 +9,7 @@ from dataset.concat_dataset import ConCatDataset #, collate_fn
 from torch.utils.data.distributed import  DistributedSampler
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from omegaconf import OmegaConf
 import os 
 import shutil
 import torchvision
@@ -21,7 +22,22 @@ from distributed import get_rank, synchronize, get_world_size
 from transformers import get_cosine_schedule_with_warmup, get_constant_schedule_with_warmup
 from copy import deepcopy
 from inpaint_mask_func import draw_masks_from_boxes
+from ldm.modules.attention_box_loss import (
+    collect_fuser_attention_box_loss,
+    parse_attention_box_layer_weights,
+    set_fuser_attention_recording,
+)
 from ldm.modules.attention import BasicTransformerBlock
+from scripts.eval.inference_ablation import (
+    apply_fuser_alpha_profile,
+    parse_fuser_alpha_profile,
+)
+from scripts.eval.recovery_checks import (
+    validate_base_grounding_compatibility,
+    validate_base_model_compatibility,
+    validate_checkpoint_trainable_manifest,
+    validate_grounding_state,
+)
 try:
     from apex import amp
 except:
@@ -91,6 +107,60 @@ def batch_to_device(batch, device):
         if isinstance(batch[k], torch.Tensor):
             batch[k] = batch[k].to(device)
     return batch
+
+
+def compute_graph_distillation_loss(student_model_output, teacher_model_output):
+    return torch.nn.functional.mse_loss(student_model_output, teacher_model_output.detach())
+
+
+def is_trainable_fuser_parameter(name, mode):
+    if mode == "full":
+        return True
+    if mode == "gates_and_linear":
+        return (
+            name.endswith(".fuser.alpha_attn")
+            or name.endswith(".fuser.alpha_dense")
+            or ".fuser.linear." in name
+        )
+    if mode == "gates_only":
+        return name.endswith(".fuser.alpha_attn") or name.endswith(".fuser.alpha_dense")
+    if mode == "frozen":
+        return False
+    raise ValueError(f"Unsupported fuser_train_mode: {mode}")
+
+
+def build_frozen_quality_teacher(model):
+    teacher = deepcopy(model)
+    teacher.eval()
+    for parameter in teacher.parameters():
+        parameter.requires_grad = False
+    position_net = getattr(teacher, "position_net", None)
+    if position_net is None or not hasattr(position_net, "set_graph_gate_override"):
+        raise AttributeError("quality teacher requires graph-gate override support")
+    position_net.set_graph_gate_override(0.0)
+    return teacher
+
+
+def set_position_net_graph_gate_override(model, gate_override):
+    model_wo_wrapper = model.module if hasattr(model, "module") else model
+    position_net = getattr(model_wo_wrapper, "position_net", None)
+    if position_net is None or not hasattr(position_net, "set_graph_gate_override"):
+        return None, None
+    previous_override = position_net.get_graph_gate_override()
+    if gate_override is None:
+        position_net.clear_graph_gate_override()
+    else:
+        position_net.set_graph_gate_override(gate_override)
+    return position_net, previous_override
+
+
+def restore_position_net_graph_gate_override(position_net, previous_override):
+    if position_net is None:
+        return
+    if previous_override is None:
+        position_net.clear_graph_gate_override()
+    else:
+        position_net.set_graph_gate_override(previous_override)
 
 
 def normalize_collated_text_grid(value, batch_size):
@@ -305,7 +375,7 @@ class Trainer:
         self.graph_param_snapshot = None
         if get_rank() == 0:
             shutil.copyfile(config.yaml_file, os.path.join(self.name, "train_config_file.yaml")  )
-            self.config_dict = vars(config)
+            self.config_dict = OmegaConf.to_container(config, resolve=True)
             torch.save(  self.config_dict,  os.path.join(self.name, "config_dict.pth")     )
 
 
@@ -335,10 +405,30 @@ class Trainer:
 
         # load original SD/GLIGEN ckpt (with input conv may be modified)
         if init_from_gligen_ckpt is not None:
-            compatible_model_state = {
-                k: v for k, v in state_dict["model"].items()
-                if (k in self.model.state_dict() and self.model.state_dict()[k].shape == v.shape)
-            }
+            model_state = self.model.state_dict()
+            if additional_channels == 0:
+                compatible_model_state, base_report = validate_base_model_compatibility(
+                    model_state,
+                    state_dict["model"],
+                )
+                if get_rank() == 0:
+                    print(
+                        "verified strict GLIGEN base load:",
+                        base_report["loaded"],
+                        "pretrained tensors and",
+                        len(base_report["new_scene_graph_tensors"]),
+                        "new scene-graph tensors",
+                    )
+            else:
+                if "position_net.linears.0.weight" in model_state:
+                    validate_base_grounding_compatibility(
+                        model_state,
+                        state_dict["model"],
+                    )
+                compatible_model_state = {
+                    k: v for k, v in state_dict["model"].items()
+                    if (k in model_state and model_state[k].shape == v.shape)
+                }
             missing_keys, unexpected_keys = self.model.load_state_dict(compatible_model_state, strict=False)
             if get_rank() == 0:
                 skipped = len(state_dict["model"]) - len(compatible_model_state)
@@ -351,6 +441,12 @@ class Trainer:
         self.autoencoder.load_state_dict( state_dict["autoencoder"]  )
         self.text_encoder.load_state_dict( state_dict["text_encoder"], strict=False  )
         self.diffusion.load_state_dict( state_dict["diffusion"]  )
+
+        self.quality_teacher_model = None
+        if bool(getattr(config, "enable_frozen_quality_teacher", False)):
+            self.quality_teacher_model = build_frozen_quality_teacher(self.model)
+            if get_rank() == 0:
+                print("created frozen quality teacher from official GLIGEN initialization")
  
         self.autoencoder.eval()
         self.text_encoder.eval()
@@ -364,31 +460,109 @@ class Trainer:
 
         grounding_ckpt = getattr(self.config, "grounding_ckpt", None)
         if grounding_ckpt is not None:
-            grounding_state = torch.load(grounding_ckpt, map_location="cpu")
-            grounding_state = grounding_state.get("model_trainable", grounding_state.get("model", {}))
+            grounding_checkpoint = torch.load(grounding_ckpt, map_location="cpu")
+            grounding_state = grounding_checkpoint.get(
+                "model_trainable",
+                grounding_checkpoint.get("model", {}),
+            )
+            if "model_trainable" in grounding_checkpoint:
+                validate_checkpoint_trainable_manifest(
+                    grounding_state,
+                    grounding_checkpoint.get("trainable_names", []),
+                )
             current_state = self.model.state_dict()
-            compatible_grounding = {
-                k: v for k, v in grounding_state.items()
-                if k in current_state and current_state[k].shape == v.shape
-            }
+            required_prefixes = []
+            if any(key.startswith("position_net.gat_layers.") for key in current_state):
+                required_prefixes.extend(("position_net.gat_layers.", "position_net.graph_gate"))
+            # A triplet-fuser checkpoint is meaningful only if both the
+            # endpoint fuser and its independent gate are present.  Keep this
+            # strict so a partial checkpoint cannot be reported as a valid
+            # controlled-generation result.
+            if "position_net.triplet_gate" in current_state:
+                required_prefixes.extend(("position_net.triplet_fuser.", "position_net.triplet_gate"))
+            compatible_grounding, load_report = validate_grounding_state(
+                current_state,
+                grounding_state,
+                required_prefixes=required_prefixes,
+            )
             current_state.update(compatible_grounding)
             self.model.load_state_dict(current_state, strict=True)
             if get_rank() == 0:
-                skipped = len(grounding_state) - len(compatible_grounding)
-                print(f"loaded {len(compatible_grounding)} compatible grounding tensors from {grounding_ckpt}, skipped {skipped}")
+                print(
+                    f"loaded {load_report['loaded']} compatible grounding tensors "
+                    f"from {grounding_ckpt}, skipped 0"
+                )
+
+        initial_fuser_alpha_attn_profile = getattr(
+            self.config,
+            "initial_fuser_alpha_attn_profile",
+            "",
+        )
+        initial_fuser_alpha_dense_profile = getattr(
+            self.config,
+            "initial_fuser_alpha_dense_profile",
+            "",
+        )
+        if initial_fuser_alpha_attn_profile or initial_fuser_alpha_dense_profile:
+            fuser_profile_report = apply_fuser_alpha_profile(
+                self.model,
+                attn_profile=parse_fuser_alpha_profile(initial_fuser_alpha_attn_profile),
+                dense_profile=parse_fuser_alpha_profile(initial_fuser_alpha_dense_profile),
+            )
+            if get_rank() == 0:
+                after = fuser_profile_report["after"]
+                print(
+                    "INITIAL_FUSER_ALPHA_PROFILE",
+                    f"updated={fuser_profile_report['updated']}",
+                    f"attn_profile={initial_fuser_alpha_attn_profile or 'None'}",
+                    f"dense_profile={initial_fuser_alpha_dense_profile or 'None'}",
+                    f"after_mean_attn={after['mean_abs_tanh_alpha_attn']:.6f}",
+                    f"after_max_attn={after['max_abs_tanh_alpha_attn']:.6f}",
+                    flush=True,
+                )
 
 
         # = = = = = = = = = = = = = = = = = create opt = = = = = = = = = = = = = = = = = #
-        params = []
+        base_params = []
+        graph_params = []
+        graph_gate_params = []
         trainable_names = []
         all_params_name = []
         freeze_position_base = getattr(config, "freeze_position_base", False)
+        triplet_fuser_only = bool(getattr(config, "triplet_fuser_only", False))
+        fuser_train_mode = getattr(config, "fuser_train_mode", None)
+        if fuser_train_mode is None:
+            fuser_train_mode = (
+                "frozen" if getattr(config, "freeze_fuser", False) else "full"
+            )
+        if fuser_train_mode not in {"full", "gates_and_linear", "gates_only", "frozen"}:
+            raise ValueError(f"Unsupported fuser_train_mode: {fuser_train_mode}")
+        graph_prefixes = (
+            "position_net.gat_layers",
+            "position_net.graph_adapter",
+            "position_net.relation_geo_predictor",
+            "position_net.relation_visual_predictor",
+            "position_net.relation_predicate_predictor",
+            "position_net.graph_visual_projector",
+            "position_net.triplet_fuser",
+            "position_net.triplet_gate",
+        )
+
+        def add_trainable_param(name, param):
+            if "position_net.graph_gate" in name:
+                graph_gate_params.append(param)
+            elif any(prefix in name for prefix in graph_prefixes):
+                graph_params.append(param)
+            else:
+                base_params.append(param)
+            trainable_names.append(name)
+
         for name, p in self.model.named_parameters():
             if ("transformer_blocks" in name) and ("fuser" in name):
-                # New added Attention layers. Freeze for encoder-only ablations.
-                if not getattr(config, "freeze_fuser", False):
-                    params.append(p)
-                    trainable_names.append(name)
+                if is_trainable_fuser_parameter(name, fuser_train_mode):
+                    add_trainable_param(name, p)
+                else:
+                    p.requires_grad = False
             elif  "position_net" in name:
                 # For graph-adapter ablations, keep the object/box MLP path fixed
                 # and train only the scene-graph residual branch.
@@ -401,24 +575,28 @@ class Trainer:
                         or "position_net.relation_visual_predictor" in name
                         or "position_net.relation_predicate_predictor" in name
                         or "position_net.graph_visual_projector" in name
+                        or "position_net.triplet_fuser" in name
+                        or "position_net.triplet_gate" in name
                     )
+                    if triplet_fuser_only:
+                        is_graph_adapter_param = (
+                            "position_net.triplet_fuser" in name
+                            or "position_net.triplet_gate" in name
+                            or "position_net.relation_geo_predictor" in name
+                        )
                     if is_graph_adapter_param:
-                        params.append(p)
-                        trainable_names.append(name)
+                        add_trainable_param(name, p)
                     else:
                         p.requires_grad = False
                 else:
                     # Grounding token processing network
-                    params.append(p)
-                    trainable_names.append(name)
+                    add_trainable_param(name, p)
             elif  "downsample_net" in name:
                 # Grounding downsample network (used in input) 
-                params.append(p) 
-                trainable_names.append(name)
+                add_trainable_param(name, p)
             elif (self.input_conv_train) and ("input_blocks.0.0.weight" in name):
                 # First conv layer was modified, thus need to train 
-                params.append(p) 
-                trainable_names.append(name)
+                add_trainable_param(name, p)
             else:
                 # Following make sure we do not miss any new params
                 # all new added trainable params have to be haddled above
@@ -428,8 +606,21 @@ class Trainer:
 
 
         self.trainable_names = trainable_names
-        self.opt = torch.optim.AdamW(params, lr=config.base_learning_rate, weight_decay=config.weight_decay) 
-        count_params(params)
+        param_groups = []
+        if base_params:
+            param_groups.append({"params": base_params, "lr": config.base_learning_rate})
+        if graph_params:
+            param_groups.append({
+                "params": graph_params,
+                "lr": config.base_learning_rate * float(getattr(config, "graph_lr_multiplier", 1.0)),
+            })
+        if graph_gate_params:
+            param_groups.append({
+                "params": graph_gate_params,
+                "lr": config.base_learning_rate * float(getattr(config, "graph_gate_lr_multiplier", 1.0)),
+            })
+        self.opt = torch.optim.AdamW(param_groups, lr=config.base_learning_rate, weight_decay=config.weight_decay)
+        count_params(base_params + graph_params + graph_gate_params)
         
         
 
@@ -482,16 +673,26 @@ class Trainer:
                 self.model.load_state_dict(checkpoint["model"])
             elif "model_trainable" in checkpoint:
                 current_state = self.model.state_dict()
-                compatible_trainable = {
-                    k: v for k, v in checkpoint["model_trainable"].items()
-                    if k in current_state and current_state[k].shape == v.shape
-                }
+                validate_checkpoint_trainable_manifest(
+                    checkpoint["model_trainable"],
+                    checkpoint.get("trainable_names", []),
+                )
+                required_prefixes = []
+                if any(key.startswith("position_net.gat_layers.") for key in current_state):
+                    required_prefixes.extend(("position_net.gat_layers.", "position_net.graph_gate"))
+                if "position_net.triplet_gate" in current_state:
+                    required_prefixes.extend(("position_net.triplet_fuser.", "position_net.triplet_gate"))
+                compatible_trainable, load_report = validate_grounding_state(
+                    current_state,
+                    checkpoint["model_trainable"],
+                    required_prefixes=required_prefixes,
+                )
                 current_state.update(compatible_trainable)
                 self.model.load_state_dict(current_state, strict=True)
                 if get_rank() == 0:
-                    skipped = len(checkpoint["model_trainable"]) - len(compatible_trainable)
                     print(
-                        f"auto-resumed {len(compatible_trainable)} trainable tensors from lightweight checkpoint, skipped {skipped}"
+                        f"auto-resumed {load_report['loaded']} trainable tensors "
+                        "from lightweight checkpoint, skipped 0"
                     )
             else:
                 raise KeyError("checkpoint must contain either 'model' or 'model_trainable'")
@@ -537,6 +738,8 @@ class Trainer:
             "relation_visual_predictor.",
             "relation_predicate_predictor.",
             "graph_visual_projector.",
+            "triplet_fuser.",
+            "triplet_gate",
         )
         named_params = []
         for name, param in position_net.named_parameters():
@@ -607,6 +810,20 @@ class Trainer:
                 torch.sigmoid(graph_gate.detach()).item(),
                 self.iter_idx + 1,
             )
+        if position_net is not None and hasattr(position_net, "get_last_graph_debug"):
+            graph_debug = position_net.get_last_graph_debug()
+            for key in (
+                "base_token_norm",
+                "graph_delta_norm",
+                "graph_contribution_norm",
+                "effective_graph_gate",
+            ):
+                if key in graph_debug:
+                    self.writer.add_scalar(
+                        f"graph_stats/{key}",
+                        graph_debug[key],
+                        self.iter_idx + 1,
+                    )
 
         for name, param in named_params:
             safe_name = name.replace(".", "/")
@@ -693,6 +910,8 @@ class Trainer:
         self.ensure_scene_graph_text_embeddings(batch)
         grounding_input = self.grounding_tokenizer_input.prepare(batch)
         diffusion_loss_weight = float(getattr(self.config, "diffusion_loss_weight", 1.0))
+        attention_box_loss_weight = float(getattr(self.config, "attention_box_loss_weight", 0.0))
+        attention_recording_enabled = attention_box_loss_weight > 0
         if diffusion_loss_weight > 0:
             x_start, t, context, inpainting_extra_input, grounding_extra_input = self.get_input(batch)
             noise = torch.randn_like(x_start)
@@ -704,14 +923,90 @@ class Trainer:
                         inpainting_extra_input=inpainting_extra_input,
                         grounding_extra_input=grounding_extra_input,
                         grounding_input=grounding_input)
-            model_output = self.model(input)
+            if attention_recording_enabled:
+                set_fuser_attention_recording(self.model, True, detach=False)
+            try:
+                model_output = self.model(input)
+            except Exception:
+                if attention_recording_enabled:
+                    set_fuser_attention_recording(self.model, False, detach=True)
+                raise
             diffusion_loss = torch.nn.functional.mse_loss(model_output, noise) * self.l_simple_weight
         else:
             x_start = self.autoencoder.encode(batch["image"])
             diffusion_loss = x_start.new_tensor(0.0)
+            input = None
+            model_output = None
 
         loss = diffusion_loss * diffusion_loss_weight
         self.loss_dict = {"loss": loss.item(), "diffusion_loss": diffusion_loss.item()}
+
+        if attention_box_loss_weight > 0 and model_output is not None:
+            attention_box_loss = collect_fuser_attention_box_loss(
+                self.model,
+                grounding_input["boxes"],
+                grounding_input["masks"],
+                target_inside_ratio=float(getattr(self.config, "attention_box_loss_target", 0.5)),
+                layer_weights=parse_attention_box_layer_weights(
+                    getattr(self.config, "attention_box_loss_layer_weights", "")
+                ),
+            )
+            set_fuser_attention_recording(self.model, False, detach=True)
+            loss = loss + attention_box_loss_weight * attention_box_loss
+            self.loss_dict.update({
+                "loss": loss.item(),
+                "attention_box_loss": attention_box_loss.item(),
+                "attention_box_loss_weighted": (attention_box_loss_weight * attention_box_loss).item(),
+            })
+        elif attention_recording_enabled:
+            set_fuser_attention_recording(self.model, False, detach=True)
+
+        quality_distillation_loss_weight = float(
+            getattr(self.config, "quality_distillation_loss_weight", 0.0)
+        )
+        if quality_distillation_loss_weight > 0:
+            if self.quality_teacher_model is None:
+                raise RuntimeError(
+                    "quality_distillation_loss_weight requires enable_frozen_quality_teacher"
+                )
+            with torch.no_grad():
+                teacher_output = self.quality_teacher_model(input)
+            quality_distillation_loss = compute_graph_distillation_loss(
+                model_output,
+                teacher_output,
+            )
+            loss = loss + quality_distillation_loss_weight * quality_distillation_loss
+            self.loss_dict.update({
+                "loss": loss.item(),
+                "quality_distillation_loss": quality_distillation_loss.item(),
+            })
+
+        graph_distillation_loss_weight = float(getattr(self.config, "graph_distillation_loss_weight", 0.0))
+        if graph_distillation_loss_weight > 0 and model_output is not None and input is not None:
+            teacher_gate_override = getattr(
+                self.config,
+                "graph_distillation_teacher_gate_override",
+                0.0,
+            )
+            position_net_override, previous_override = set_position_net_graph_gate_override(
+                self.model,
+                teacher_gate_override,
+            )
+            try:
+                with torch.no_grad():
+                    teacher_output = self.model(input)
+            finally:
+                restore_position_net_graph_gate_override(position_net_override, previous_override)
+
+            graph_distillation_loss = compute_graph_distillation_loss(
+                model_output,
+                teacher_output,
+            )
+            loss = loss + graph_distillation_loss_weight * graph_distillation_loss
+            self.loss_dict.update({
+                "loss": loss.item(),
+                "graph_distillation_loss": graph_distillation_loss.item(),
+            })
 
         object_align_loss_weight = getattr(self.config, "object_align_loss_weight", 0.0)
         if object_align_loss_weight > 0:
@@ -723,11 +1018,11 @@ class Trainer:
             per_object_align = 1 - (object_tokens * positive_embeddings).sum(dim=-1)
             object_align_loss = (per_object_align * masks).sum() / masks.sum().clamp(min=1)
             loss = loss + object_align_loss_weight * object_align_loss
-            self.loss_dict = {
+            self.loss_dict.update({
                 "loss": loss.item(),
                 "diffusion_loss": diffusion_loss.item(),
                 "object_align_loss": object_align_loss.item(),
-            }
+            })
 
         spatial_consistency_loss_weight = getattr(self.config, "spatial_consistency_loss_weight", 0.0)
         if spatial_consistency_loss_weight > 0:
@@ -892,12 +1187,28 @@ class Trainer:
             relation_embeddings = grounding_input["relation_embeddings"].detach()
             relation_geo_features = grounding_input["relation_geo_features"].detach()
             if relation_masks is not None and relation_edges.shape[1] > 0:
-                object_tokens = self.model.position_net(**grounding_input)
-                pred_geo = self.model.position_net.predict_relation_geo(
-                    object_tokens,
-                    relation_edges,
-                    relation_embeddings=relation_embeddings,
+                prediction_source = getattr(
+                    self.config,
+                    "relation_geo_prediction_source",
+                    "final_tokens",
                 )
+                if prediction_source == "masked_graph_delta":
+                    pred_geo = self.model.position_net.predict_relation_geo_from_masked_graph(
+                        **grounding_input
+                    )
+                elif prediction_source == "final_tokens":
+                    object_tokens = self.model.position_net(**grounding_input)
+                    pred_geo = self.model.position_net.predict_relation_geo(
+                        object_tokens,
+                        relation_edges,
+                        relation_embeddings=relation_embeddings,
+                    )
+                else:
+                    raise ValueError(
+                        "relation_geo_prediction_source must be "
+                        "'final_tokens' or 'masked_graph_delta', got "
+                        f"{prediction_source!r}"
+                    )
                 target_geo = relation_geo_features.to(dtype=pred_geo.dtype)
                 beta = getattr(self.config, "relation_geo_prediction_beta", 0.1)
                 per_relation_pred = torch.nn.functional.smooth_l1_loss(
@@ -911,7 +1222,7 @@ class Trainer:
                 if bool(getattr(self.config, "relation_geo_prediction_filter_predicates", True)):
                     geometry_mask = relation_text_geometry_mask(
                         batch.get("relation_texts"),
-                        batch_size=object_tokens.shape[0],
+                        batch_size=pred_geo.shape[0],
                         device=per_relation_pred.device,
                         dtype=per_relation_pred.dtype,
                     )

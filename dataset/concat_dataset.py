@@ -1,14 +1,12 @@
 from .catalog import DatasetCatalog
 from ldm.util import instantiate_from_config
-import torch 
+import torch
 
 
-
-
-class ConCatDataset():
+class ConCatDataset:
     def __init__(self, dataset_name_list, ROOT, train=True, repeats=None):
-        self.datasets = [] 
-        cul_previous_dataset_length = 0 
+        self.datasets = []
+        cul_previous_dataset_length = 0
         offset_map = []
         which_dataset = []
 
@@ -16,31 +14,42 @@ class ConCatDataset():
             repeats = [1] * len(dataset_name_list)
         else:
             assert len(repeats) == len(dataset_name_list)
-            
 
         Catalog = DatasetCatalog(ROOT)
         for dataset_idx, (dataset_name, yaml_params) in enumerate(dataset_name_list.items()):
             repeat = repeats[dataset_idx]
 
             dataset_dict = getattr(Catalog, dataset_name)
-            
-            target = dataset_dict['target']
-            params = dataset_dict['train_params'] if train else dataset_dict['val_params']
+
+            target = dataset_dict["target"]
+            params = dataset_dict["train_params"] if train else dataset_dict.get("val_params", {})
+            params = dict(params)
             if yaml_params is not None:
                 params.update(yaml_params)
-            dataset = instantiate_from_config( dict(target=target, params=params) )
-            
+
+            # Compatibility shim: old local comparison configs/scripts may still
+            # use the historic dataset key `VGGrounding`, while the recovered
+            # scene-graph path is h5/vocab/image-root based.
+            if (
+                dataset_name == "VGGrounding"
+                and "h5_path" in params
+                and "vocab_path" in params
+                and "image_root" in params
+            ):
+                target = "dataset.dataset_vg_scene_graph.VGSceneGraphDataset"
+
+            dataset = instantiate_from_config(dict(target=target, params=params))
+
             self.datasets.append(dataset)
             for _ in range(repeat):
-                offset_map.append(  torch.ones(len(dataset))*cul_previous_dataset_length  )
-                which_dataset.append(  torch.ones(len(dataset))*dataset_idx  )
+                offset_map.append(torch.ones(len(dataset)) * cul_previous_dataset_length)
+                which_dataset.append(torch.ones(len(dataset)) * dataset_idx)
                 cul_previous_dataset_length += len(dataset)
         offset_map = torch.cat(offset_map, dim=0).long()
         self.total_length = cul_previous_dataset_length
 
         self.mapping = torch.arange(self.total_length) - offset_map
         self.which_dataset = torch.cat(which_dataset, dim=0).long()
-
 
     def total_images(self):
         count = 0
@@ -49,17 +58,9 @@ class ConCatDataset():
             count += dataset.total_images()
         return count
 
-
-
     def __getitem__(self, idx):
-        dataset = self.datasets[ self.which_dataset[idx] ]   
-        return dataset[ self.mapping[idx] ]     
-
+        dataset = self.datasets[self.which_dataset[idx]]
+        return dataset[self.mapping[idx]]
 
     def __len__(self):
         return self.total_length
-            
-
-
-
-

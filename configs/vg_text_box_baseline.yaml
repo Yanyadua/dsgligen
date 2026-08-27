@@ -4,35 +4,33 @@ diffusion:
     linear_start: 0.00085
     linear_end: 0.012
     timesteps: 1000
-   
 
 model:
   target: ldm.modules.diffusionmodules.openaimodel.UNetModel
   params:
-    image_size: 64 # unused in the unet, but will be used when create xT
+    image_size: 64
     in_channels: 4
     out_channels: 4
     model_channels: 320
-    attention_resolutions: [ 4, 2, 1 ]
+    attention_resolutions: [4, 2, 1]
     num_res_blocks: 2
-    channel_mult: [ 1, 2, 4, 4 ]
+    channel_mult: [1, 2, 4, 4]
     num_heads: 8
     transformer_depth: 1
     context_dim: 768
-    fuser_type: gatedSA  #  gatedCA or gatedSA. We have ablate this, self-attention is better than cross-attention, thus please set this as gatedSA usually
+    fuser_type: gatedSA
     use_checkpoint: True
 
     grounding_tokenizer:
       target: ldm.modules.diffusionmodules.text_grounding_net.PositionNet
       params:
-        in_dim: 768 # this is pre-processing feature dim from CLIP Text encoder; penultimate feature  
-        out_dim: 768 # Not constrained to this, as one linear project is appiled at each Gated layer to match visual dimension 
-
+        in_dim: 768
+        out_dim: 768
 
 autoencoder:
   target: ldm.models.autoencoder.AutoencoderKL
   params:
-    scale_factor: 0.18215 
+    scale_factor: 0.18215
     embed_dim: 4
     ddconfig:
       double_z: true
@@ -41,31 +39,43 @@ autoencoder:
       in_channels: 3
       out_ch: 3
       ch: 128
-      ch_mult:
-      - 1
-      - 2
-      - 4
-      - 4
+      ch_mult: [1, 2, 4, 4]
       num_res_blocks: 2
       attn_resolutions: []
       dropout: 0.0
 
-
 text_encoder:
   target: ldm.modules.encoders.modules.FrozenCLIPEmbedder
 
-
-
-
-train_dataset_names: 
+train_dataset_names:
   VGGrounding:
-    which_layer_text: before
-    image_size: 512
+    image_root: /root/autodl-tmp/standard_sg2im_fresh_h5/images
+    h5_path: /root/autodl-tmp/standard_sg2im_fresh_h5/train.h5
+    vocab_path: /root/autodl-tmp/standard_sg2im_fresh_h5/vocab.json
+    image_size: 256
+    random_crop: false
+    random_flip: true
     max_boxes_per_data: 30
-    prob_use_caption: 0.5 
-    random_crop: False
-    random_flip: True
-
+    max_relations_per_data: 30
+    prob_use_caption: 1.0
+  VGSceneGraph:
+    image_root: /root/autodl-tmp/standard_sg2im_fresh_h5/images
+    h5_path: /root/autodl-tmp/standard_sg2im_fresh_h5/train.h5
+    vocab_path: /root/autodl-tmp/standard_sg2im_fresh_h5/vocab.json
+    image_size: 256
+    random_crop: false
+    random_flip: true
+    max_boxes_per_data: 30
+    max_relations_per_data: 30
+    prob_use_caption: 1.0
 
 grounding_tokenizer_input:
   target: grounding_input.text_grounding_tokinzer_input.GroundingNetInput
+
+diffusion_loss_weight: 1.0
+object_align_loss_weight: 0.0
+spatial_consistency_loss_weight: 0.0
+relation_geo_prediction_loss_weight: 0.0
+relation_visual_align_loss_weight: 0.0
+graph_image_align_loss_weight: 0.0
+masked_relation_loss_weight: 0.0

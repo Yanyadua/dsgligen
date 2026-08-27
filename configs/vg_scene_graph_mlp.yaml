@@ -22,14 +22,10 @@ model:
     use_checkpoint: True
 
     grounding_tokenizer:
-      target: ldm.modules.diffusionmodules.scene_graph_grounding_net.PositionNet
+      target: ldm.modules.diffusionmodules.text_grounding_net.PositionNet
       params:
         in_dim: 768
         out_dim: 768
-        hidden_dim: 768
-        gat_layers: 0
-        gat_heads: 4
-        dropout: 0.0
 
 autoencoder:
   target: ldm.models.autoencoder.AutoencoderKL
@@ -53,12 +49,33 @@ text_encoder:
 
 train_dataset_names:
   VGGrounding:
-    which_layer_text: before
-    image_size: 512
+    image_root: /root/autodl-tmp/standard_sg2im_fresh_h5/images
+    h5_path: /root/autodl-tmp/standard_sg2im_fresh_h5/train.h5
+    vocab_path: /root/autodl-tmp/standard_sg2im_fresh_h5/vocab.json
+    image_size: 256
+    random_crop: false
+    random_flip: true
     max_boxes_per_data: 30
-    prob_use_caption: 0.5
-    random_crop: False
-    random_flip: True
+    max_relations_per_data: 30
+    prob_use_caption: 1.0
+  VGSceneGraph:
+    image_root: /root/autodl-tmp/standard_sg2im_fresh_h5/images
+    h5_path: /root/autodl-tmp/standard_sg2im_fresh_h5/train.h5
+    vocab_path: /root/autodl-tmp/standard_sg2im_fresh_h5/vocab.json
+    image_size: 256
+    random_crop: false
+    random_flip: true
+    max_boxes_per_data: 30
+    max_relations_per_data: 30
+    prob_use_caption: 1.0
 
 grounding_tokenizer_input:
-  target: grounding_input.scene_graph_grounding_tokenizer_input.GroundingNetInput
+  target: grounding_input.text_grounding_tokinzer_input.GroundingNetInput
+
+diffusion_loss_weight: 1.0
+object_align_loss_weight: 0.0
+spatial_consistency_loss_weight: 0.0
+relation_geo_prediction_loss_weight: 0.0
+relation_visual_align_loss_weight: 0.0
+graph_image_align_loss_weight: 0.0
+masked_relation_loss_weight: 0.0
