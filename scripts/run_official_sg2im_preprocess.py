@@ -5,7 +5,7 @@ import argparse
 import runpy
 import sys
 
-import imageio.v2 as imageio
+import imageio
 import scipy.misc
 
 
