@@ -12,6 +12,7 @@ RAW_DIR="${RAW_DIR:-${ROOT_DIR}/vg_sg2im_raw}"
 OUT_DIR="${OUT_DIR:-${ROOT_DIR}/standard_sg2im_fresh_h5}"
 GITHUB_PROXY="${GITHUB_PROXY:-https://gh-proxy.com/https://github.com/}"
 VG_MIRROR="${VG_MIRROR:-https://homes.cs.washington.edu/~ranjay/visualgenome/data/dataset}"
+IMAGE_MIRROR="${IMAGE_MIRROR:-${VG_MIRROR}}"
 
 mkdir -p "${RAW_DIR}" "${OUT_DIR}"
 
@@ -49,8 +50,8 @@ download "${VG_MIRROR}/relationships.json.zip" relationships.json.zip
 download "${VG_MIRROR}/image_data.json.zip" image_data.json.zip
 download "${VG_MIRROR}/object_alias.txt" object_alias.txt
 download "${VG_MIRROR}/relationship_alias.txt" relationship_alias.txt
-download "https://cs.stanford.edu/people/rak248/VG_100K_2/images.zip" images.zip
-download "https://cs.stanford.edu/people/rak248/VG_100K_2/images2.zip" images2.zip
+download "${IMAGE_MIRROR}/images.zip" images.zip
+download "${IMAGE_MIRROR}/images2.zip" images2.zip
 
 unzip -tq objects.json.zip
 unzip -tq attributes.json.zip
