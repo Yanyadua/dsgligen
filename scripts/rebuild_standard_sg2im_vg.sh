@@ -31,6 +31,17 @@ fi
 download() {
   local url="$1"
   local target="$2"
+  if [[ -s "${target}" ]]; then
+    if [[ "${target}" == *.zip ]]; then
+      if unzip -tq "${target}" >/dev/null; then
+        echo "Using verified archive $(basename "${target}")"
+        return
+      fi
+    else
+      echo "Using existing $(basename "${target}")"
+      return
+    fi
+  fi
   if command -v aria2c >/dev/null 2>&1; then
     # The official VG archive supports HTTP byte ranges. Eight connections make
     # the fresh-instance download practical while preserving the exact URL.
